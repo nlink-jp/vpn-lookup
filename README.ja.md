@@ -3,9 +3,7 @@
 この IP アドレスは中継点（VPN・プロキシ・Tor・中継サービス・ゲートウェイ・ホスティング）か、
 そうなら誰のものか。
 
-> **状態：リリース候補。** CLI と MCP サーバーの照会、実サービス相手の e2e まで入っています。
-> まだリリースしていません。設計は
-> [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) にあります。
+設計は [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) にあります。
 
 `vpn-lookup` は、無償枠のまま組織自身の業務に使える 2 つの IP 情報サービス —
 [ipapi.is](https://ipapi.is) と [proxycheck.io](https://proxycheck.io) — を 1 回の照会に重ねる
@@ -46,7 +44,11 @@ CLI 兼ローカル MCP サーバーです。IP ごとに、判定 1 つと事�
 
 ## インストール
 
-まだリリースしていません。ソースからビルドします：
+```bash
+brew install nlink-jp/tap/vpn-lookup   # prebuilt、Developer ID 署名 + notarize 済、arm64 macOS
+```
+
+またはリリースアーカイブをダウンロード、もしくはソースからビルド：
 
 ```bash
 make build  # → dist/vpn-lookup

@@ -11,7 +11,7 @@ into one verdict with per-source evidence and `seen_by` corroboration.
 Module path: `github.com/nlink-jp/vpn-lookup`. Design authority:
 [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) (English beside it).
 
-**Status: RFP Phases 1–3 implemented (CLI and MCP lookups, live e2e), independently reviewed before release; not released yet.**
+**Status: released (versions in CHANGELOG.md and `git tag`; Homebrew `nlink-jp/tap/vpn-lookup`).**
 
 ## Build / test
 

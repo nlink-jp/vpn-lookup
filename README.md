@@ -3,9 +3,7 @@
 Is this IP address an intermediary — a VPN, a proxy, Tor, a relay, a gateway, a hosting
 provider — and whose?
 
-> **Status: release candidate.** The CLI and the MCP server both look addresses up, with a
-> live end-to-end suite; not released yet. The design is in
-> [docs/en/vpn-lookup-rfp.md](docs/en/vpn-lookup-rfp.md).
+The design is in [docs/en/vpn-lookup-rfp.md](docs/en/vpn-lookup-rfp.md).
 
 `vpn-lookup` is a CLI and local MCP server that layers two IP-intelligence services whose
 free tiers may be used for an organization's own work — [ipapi.is](https://ipapi.is) and
@@ -47,7 +45,11 @@ is a request to the provider.
 
 ## Install
 
-Not released yet. Build from source:
+```bash
+brew install nlink-jp/tap/vpn-lookup   # prebuilt, Developer ID signed + notarized, arm64 macOS
+```
+
+Or download a release archive, or build from source:
 
 ```bash
 make build  # → dist/vpn-lookup
