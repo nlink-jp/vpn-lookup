@@ -42,7 +42,8 @@ internal/engine/     Per-source cache lookups, one request per source, fresh ver
 internal/app/        CLI shell: flags (anywhere), validation, text/JSON, --clear-cache
 internal/mcp/        Zero-dep stdio JSON-RPC 2.0 server: check_ip / cache_status / get_usage;
                      the 128 KB response ceiling (tail omission); usage.md pinned by meta-tests
-e2e/                 Live suite (build tag "e2e"), Phase 3
+e2e/                 Live suite (build tag "e2e"): ipapi.is's documented example addresses per
+                     managed-service type; skips without both keys; ~6 lookups per source
 docs/{en,ja}/        RFP
 ```
 
