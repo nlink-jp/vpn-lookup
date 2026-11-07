@@ -252,7 +252,13 @@ func mustPrefix(s string) netip.Prefix { return netip.MustParsePrefix(s) }
 // refusing the whole batch on the first input that cannot be sent — so a typo
 // never half-runs a triage — and refusing more than max distinct addresses.
 // Duplicates are kept in input order; the caller asks once per address.
+//
+// Duplicates count toward a second ceiling, ten times max inputs in all, so a
+// flood of one address cannot make a call arbitrarily long.
 func ParseBatch(raw []string, max int) ([]string, error) {
+	if len(raw) > 10*max {
+		return nil, &Error{Reason: fmt.Sprintf("%d inputs; the ceiling is %d per call, duplicates included", len(raw), 10*max)}
+	}
 	out := make([]string, 0, len(raw))
 	distinct := map[string]bool{}
 	for _, r := range raw {

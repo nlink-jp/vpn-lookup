@@ -172,3 +172,16 @@ func TestParseBatch(t *testing.T) {
 		t.Fatalf("over the ceiling must be refused: %v", err)
 	}
 }
+
+func TestParseBatchCapsDuplicates(t *testing.T) {
+	many := make([]string, 21)
+	for i := range many {
+		many[i] = "8.8.8.8"
+	}
+	if _, err := ParseBatch(many[:20], 2); err != nil {
+		t.Fatalf("20 inputs of one address under a 2 x 10 ceiling must pass: %v", err)
+	}
+	if _, err := ParseBatch(many, 2); err == nil || !strings.Contains(err.Error(), "duplicates included") {
+		t.Fatalf("21 inputs over the 20 ceiling must be refused: %v", err)
+	}
+}

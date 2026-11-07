@@ -289,3 +289,21 @@ func TestCacheStatusReportsQuotaAndItsFailure(t *testing.T) {
 		t.Fatalf("a quota failure is reported inside the status, not as a tool error: isErr=%v %s", isErr, text)
 	}
 }
+
+// Quotes and angle brackets are escaped a second time inside the JSON-RPC
+// response; the ceiling holds for what goes over the wire.
+func TestCeilingMeasuresTheEscapedText(t *testing.T) {
+	eng := &fakeEngine{name: strings.Repeat(`"<>&`, 400)}
+	var ips []string
+	for i := 1; i <= MaxPerCall; i++ {
+		ips = append(ips, fmt.Sprintf("%q", fmt.Sprintf("8.8.%d.%d", i/250, i%250+1)))
+	}
+	var out bytes.Buffer
+	in := callTool(ToolCheckIP, `{"ips":[`+strings.Join(ips, ",")+`]}`)
+	if err := Serve(Options{Config: testConfig("ik", ""), Engine: eng}, strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() > maxResultBytes+1024 {
+		t.Fatalf("the response is %d bytes on the wire; the ceiling is %d", out.Len(), maxResultBytes)
+	}
+}

@@ -154,11 +154,12 @@ func (c *Client) Lookup(ips []string) (*Answer, error) {
 	return ans, nil
 }
 
-// field reads a top-level string, cleaned.
+// field reads a top-level string, cleaned and capped: the message lands in
+// every address's error and in warnings, and upstream sets no length.
 func field(doc map[string]json.RawMessage, name string) string {
 	var s string
 	if v, ok := doc[name]; ok && json.Unmarshal(v, &s) == nil {
-		return guard.Clean(s)
+		return guard.Truncate([]byte(s), 200)
 	}
 	return ""
 }

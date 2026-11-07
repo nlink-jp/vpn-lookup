@@ -179,14 +179,17 @@ func (s *server) toolCheckIP(raw json.RawMessage) toolResult {
 }
 
 // capResult encodes the result, dropping results from the tail — named in
-// omitted — while it is over the ceiling. The CLI's --json stays complete.
+// omitted — while it is over the ceiling. What is measured is the text as it
+// travels inside the JSON-RPC response, escaped a second time, not the inner
+// JSON. The CLI's --json stays complete.
 func capResult(r *checkIPResult) toolResult {
 	for {
 		b, err := json.Marshal(r)
 		if err != nil {
 			return errorResult(CodeInternal, "encode result: "+err.Error())
 		}
-		if len(b) <= maxResultBytes || len(r.Results) <= 1 {
+		wire, _ := json.Marshal(string(b))
+		if len(wire) <= maxResultBytes || len(r.Results) <= 1 {
 			return textResult(false, string(b))
 		}
 		last := r.Results[len(r.Results)-1]

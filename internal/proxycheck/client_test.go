@@ -197,3 +197,13 @@ func TestUsageFailuresAreErrorsWithoutTheKey(t *testing.T) {
 		t.Fatalf("transport error leaked the key or did not fail: %v", err)
 	}
 }
+
+func TestLongMessageIsCapped(t *testing.T) {
+	long := strings.Repeat("m", 5000)
+	srv := server(t, 200, `{"status":"warning","message":"`+long+`","192.0.2.10":{"detections":{"vpn":false}}}`, nil)
+	c := &Client{HTTP: srv.Client(), BaseURL: srv.URL, APIKey: "k"}
+	ans, err := c.Lookup([]string{"192.0.2.10"})
+	if err != nil || len(ans.Warning) > 210 {
+		t.Fatalf("warning is %d bytes; err=%v", len(ans.Warning), err)
+	}
+}
