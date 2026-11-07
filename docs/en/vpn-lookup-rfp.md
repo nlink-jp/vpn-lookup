@@ -49,7 +49,9 @@ vpn-lookup mcp      # local MCP server (stdio)
   The check is shodan-lookup's `internal/ipaddr`, ported: it covers 100.64/10 (CGNAT), the
   documentation and benchmarking ranges, ULA, site-local and the 2000::/3 allow-list, and
   unwraps IPv4-mapped, NAT64, 6to4, Teredo and IPv4-compatible IPv6 to judge the IPv4
-  inside. **The unwrapped IPv4 is what gets sent**
+  inside. **What is sent:** IPv4-mapped, IPv4-compatible and NAT64 only spell an IPv4 host, so the
+  IPv4 is sent; inside 6to4 and Teredo the IPv4 is the tunnel's endpoint, not the host that was
+  seen, so the IPv6 is sent as given (decided in phase 1)
 - Inputs are canonicalised with `netip.Addr` (`String()`) and deduplicated before sending.
   Every input is validated before any lookup starts; one invalid entry sends nothing
 - At most 100 addresses per invocation. Sweeps of thousands are out of scope
