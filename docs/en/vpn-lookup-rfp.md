@@ -315,10 +315,10 @@ shodan-lookup) and fills the missing "is this an intermediary" step.
 
 **Open items (settled in phase 1)**
 
-- **Whether proxycheck.io reads the key from the body or the URL.** An invalid key raises no
-  error and the dashboard's query count stayed at 0 for several minutes, so phase 0 could not
-  decide. Settle it with a custom-rule marker (§4). Until then follow the documentation (URL)
-  and keep URLs out of error text
+- ~~Whether proxycheck.io reads the key from the body or the URL~~ → **the URL only (settled in
+  phase 1).** The dashboard's query count updates about an hour late, and only the queries with
+  the key in the URL were counted (a 9-address bulk with the key in the body was not). The key
+  goes in the URL's `?key=` and every error path strips the URL
 - Whether ipapi.is's remaining quota can be read
 
 ---

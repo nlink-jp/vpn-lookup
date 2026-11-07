@@ -3,14 +3,14 @@
 Is this IP address an intermediary — a VPN, a proxy, Tor, a relay, a gateway, a hosting
 provider — and whose?
 
-> **Status: scaffold.** The structure, configuration and MCP handshake are in place; the
-> lookup itself is not implemented yet. The design is in
+> **Status: in development.** The CLI looks addresses up (RFP Phase 1); the MCP server's
+> lookup tool, `check_ip`, is next (Phase 2). Not released yet. The design is in
 > [docs/en/vpn-lookup-rfp.md](docs/en/vpn-lookup-rfp.md).
 
 `vpn-lookup` is a CLI and local MCP server that layers two IP-intelligence services whose
 free tiers may be used for an organization's own work — [ipapi.is](https://ipapi.is) and
-[proxycheck.io](https://proxycheck.io) — into one lookup. For each address it will return
-one verdict, the provider's name, and which source said so:
+[proxycheck.io](https://proxycheck.io) — into one lookup. For each address it returns one
+verdict, the provider's name, and which source said so (`seen_by`):
 
 | verdict | meaning |
 |---|---|
@@ -49,11 +49,12 @@ Not released yet. Build from source:
 make build  # → dist/vpn-lookup
 ```
 
-## Usage (planned)
+## Usage
 
 ```
-vpn-lookup [flags] <ip> [ip...]   # IPv4/IPv6, up to 100
+vpn-lookup [flags] <ip> [ip...]   # IPv4/IPv6, up to 100; flags may come anywhere
 vpn-lookup [flags]                # addresses from stdin, one per line
+vpn-lookup --clear-cache          # delete every cache entry
 vpn-lookup mcp                    # run as a local MCP server (stdio)
 
 Flags:
@@ -68,6 +69,28 @@ Flags:
 Exit codes: `0` all lookups completed / `1` a source failed (results still printed) /
 `2` usage error. Verdicts are never encoded in exit codes.
 
+Example (one block per address; names are what the services report):
+
+```
+$ vpn-lookup a.b.c.d
+a.b.c.d
+  verdict    : vpn (seen by both)
+  provider   : ipapi.is: MullvadVPN / proxycheck.io: Mullvad
+  ipapi      : vpn, datacenter; vpn MullvadVPN, last seen 2026-11-06T12:43:23.958Z; hosting Keminet SHPK; company type business
+  proxycheck : vpn, hosting; risk 50, confidence 100; operator Mullvad [datacenter_vpns]; network Hosting
+```
+
+- Private, loopback, CGNAT, documentation and other non-public addresses are refused before
+  anything is sent. An IPv4-mapped, IPv4-compatible or NAT64 address is looked up as the IPv4
+  host it spells; a 6to4 or Teredo address as the IPv6 address itself.
+- Answers are cached per source: ipapi.is for 24 hours (`[cache] ipapi_ttl_hours`, at most
+  30 days), proxycheck.io as it recommends — an hour for a clean answer, until its
+  `delist_datetime` and at most 15 minutes for an anonymous one. `--clear-cache` deletes
+  everything (ipapi.is's terms require deleting cached answers within 30 days of the contract
+  ending).
+- A source without a key is shown as `disabled` and not used. Without ipapi.is, relays,
+  gateways, email gateways, DNS resolvers and satellite ISPs cannot be told apart.
+
 ## Configuration
 
 See [config.example.toml](config.example.toml). The file is read strictly: an unknown key,
@@ -77,7 +100,7 @@ an empty value or a missing `--config` file is an error. Environment variables
 ## MCP server
 
 `vpn-lookup mcp` speaks MCP over stdio and starts even with no key configured. In the
-scaffold it answers `get_usage` and `cache_status`; `check_ip` comes with the lookup.
+current build it answers `get_usage` and `cache_status`; `check_ip` is RFP Phase 2.
 
 ## Build
 

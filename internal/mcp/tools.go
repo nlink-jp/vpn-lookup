@@ -33,8 +33,8 @@ var usageMarkdown string
 // `instructions` field) that makes get_usage discoverable.
 const Instructions = "vpn-lookup tells whether an IP address is an intermediary — Tor, a commercial VPN, a managed " +
 	"relay (iCloud Private Relay), a corporate secure web gateway, an email gateway, a public DNS resolver, a " +
-	"satellite ISP, a proxy, or a hosting provider — and whose, by layering ipapi.is and proxycheck.io. This build " +
-	"is a scaffold: the lookup tool (check_ip) is not implemented yet. Call get_usage for the reference; " +
+	"satellite ISP, a proxy, or a hosting provider — and whose, by layering ipapi.is and proxycheck.io. The MCP " +
+	"lookup tool (check_ip) is not implemented yet. Call get_usage for the reference; " +
 	"cache_status shows which sources have a key. Tool errors are structured JSON ({code, message})."
 
 // obj builds a tool's input schema. Every schema goes through here so that

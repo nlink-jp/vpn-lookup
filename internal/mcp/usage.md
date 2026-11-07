@@ -2,7 +2,7 @@
 
 **Tells whether an IP address is an intermediary, and whose**, by layering two sources: ipapi.is and proxycheck.io. An intermediary is Tor, a commercial VPN, a managed privacy relay (iCloud Private Relay), a corporate secure web gateway (Zscaler), an email security gateway (Proofpoint), a public DNS resolver, a satellite ISP, a proxy, or a hosting provider. If an address is one, it does not lead to the person behind it.
 
-> **This build is a scaffold.** The lookup tool, `check_ip`, is not implemented yet. The design is in `docs/en/vpn-lookup-rfp.md`.
+> **The MCP lookup tool, `check_ip`, is not implemented yet** (RFP Phase 2); the CLI already looks addresses up. The design is in `docs/en/vpn-lookup-rfp.md`.
 
 Every address looked up reaches both services, with the operator's organization keys; no packet reaches the address itself. Results are the services' inference, never a basis for automatic blocking.
 

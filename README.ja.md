@@ -3,13 +3,14 @@
 この IP アドレスは中継点（VPN・プロキシ・Tor・中継サービス・ゲートウェイ・ホスティング）か、
 そうなら誰のものか。
 
-> **状態：雛形。** 構成・設定・MCP の初期化までは入っていますが、照会そのものはまだ
-> 実装していません。設計は [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) にあります。
+> **状態：開発中。** CLI での照会は実装済みです（RFP Phase 1）。MCP サーバーの照会ツール
+> `check_ip` は次の段階（Phase 2）です。まだリリースしていません。設計は
+> [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) にあります。
 
 `vpn-lookup` は、無償枠のまま組織自身の業務に使える 2 つの IP 情報サービス —
 [ipapi.is](https://ipapi.is) と [proxycheck.io](https://proxycheck.io) — を 1 回の照会に重ねる
-CLI 兼ローカル MCP サーバーです。IP ごとに、判定 1 つと事業者名、どのソースがそう言ったかを
-返します（予定）：
+CLI 兼ローカル MCP サーバーです。IP ごとに、判定 1 つと事業者名、どのソースがそう言ったか
+（`seen_by`）を返します：
 
 | 判定 | 意味 |
 |---|---|
@@ -47,11 +48,12 @@ CLI 兼ローカル MCP サーバーです。IP ごとに、判定 1 つと事�
 make build  # → dist/vpn-lookup
 ```
 
-## 使い方（予定）
+## 使い方
 
 ```
-vpn-lookup [flags] <ip> [ip...]   # IPv4/IPv6、100 件まで
+vpn-lookup [flags] <ip> [ip...]   # IPv4/IPv6、100 件まで。フラグはどこに置いてもよい
 vpn-lookup [flags]                # stdin から 1 行 1 件
+vpn-lookup --clear-cache          # キャッシュを全消去
 vpn-lookup mcp                    # ローカル MCP サーバー（stdio）
 
 Flags:
@@ -66,6 +68,27 @@ Flags:
 Exit code: `0` 全照会完了 / `1` ソース障害（結果は出力される）/ `2` 使用法エラー。
 判定は exit code に載せません。
 
+実行例（IP ごとに 1 ブロック。名前は各サービスが返したもの）：
+
+```
+$ vpn-lookup a.b.c.d
+a.b.c.d
+  verdict    : vpn (seen by both)
+  provider   : ipapi.is: MullvadVPN / proxycheck.io: Mullvad
+  ipapi      : vpn, datacenter; vpn MullvadVPN, last seen 2026-11-06T12:43:23.958Z; hosting Keminet SHPK; company type business
+  proxycheck : vpn, hosting; risk 50, confidence 100; operator Mullvad [datacenter_vpns]; network Hosting
+```
+
+- プライベート・ループバック・CGNAT・文書用など、公開されていないアドレスは何も送らずに
+  拒否します。IPv4 射影・IPv4 互換・NAT64 の IPv6 は、それが表す IPv4 の宿主として照会します。
+  6to4 と Teredo は IPv6 のまま照会します。
+- 回答はソースごとにキャッシュします。ipapi.is は 24 時間（`[cache] ipapi_ttl_hours`、最大
+  30 日）。proxycheck.io は推奨どおり、正常な回答は 1 時間、匿名と判定した回答は
+  `delist_datetime` まで（最大 15 分）。`--clear-cache` ですべて消せます（ipapi.is の規約は、
+  契約終了から 30 日以内にキャッシュした回答の削除を求めています）。
+- キーの無いソースは `disabled` と表示し、使いません。ipapi.is が無いと、中継サービス・
+  ゲートウェイ・メール中継・DNS リゾルバ・衛星 ISP を見分けられません。
+
 ## 設定
 
 [config.example.toml](config.example.toml) を参照。設定ファイルは厳格に読みます。知らないキー、
@@ -75,7 +98,7 @@ Exit code: `0` 全照会完了 / `1` ソース障害（結果は出力される�
 ## MCP サーバー
 
 `vpn-lookup mcp` は stdio で MCP を話し、キーが無くても起動します。雛形の段階で答えるのは
-`get_usage` と `cache_status` で、`check_ip` は照会の実装とともに加わります。
+`get_usage` と `cache_status` で、`check_ip` は RFP Phase 2 で加わります。
 
 ## ビルド
 

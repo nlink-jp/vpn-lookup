@@ -1,21 +1,27 @@
-// Package app is the CLI shell: flag parsing, dispatch, and rendering.
-// Everything below it is I/O-free or dependency-injected, so this is the only
-// layer that touches the real process environment.
-//
-// Scaffold: --version, help and the mcp subcommand work; a lookup and
-// --clear-cache load and check the configuration, then report that they are
-// not implemented yet (exit 2) instead of pretending to answer.
+// Package app is the CLI shell: flag parsing, input validation, dispatch and
+// rendering. Everything below it is I/O-free or dependency-injected, so this is
+// the only layer that touches the real process environment.
 package app
 
 import (
+	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/nlink-jp/vpn-lookup/internal/cache"
 	"github.com/nlink-jp/vpn-lookup/internal/config"
+	"github.com/nlink-jp/vpn-lookup/internal/engine"
+	"github.com/nlink-jp/vpn-lookup/internal/guard"
+	"github.com/nlink-jp/vpn-lookup/internal/ipaddr"
+	"github.com/nlink-jp/vpn-lookup/internal/ipapi"
 	"github.com/nlink-jp/vpn-lookup/internal/mcp"
+	"github.com/nlink-jp/vpn-lookup/internal/proxycheck"
 )
 
 // Exit codes. Verdicts are never encoded here: scripts read --json.
@@ -24,6 +30,9 @@ const (
 	exitError = 1 // at least one source failed (results still printed)
 	exitUsage = 2 // bad flags, bad input, configuration problems
 )
+
+// MaxPerCall is the most addresses one invocation answers (RFP §2).
+const MaxPerCall = 100
 
 // Run executes the CLI with the given arguments and returns the process exit
 // code.
@@ -47,13 +56,13 @@ func run(args []string, version string, stdin io.Reader, stdout, stderr io.Write
 		configPath  = fs.String("config", "", "config file path")
 		showVersion = fs.Bool("version", false, "print version")
 	)
-	if err := fs.Parse(args); err != nil {
+	positional, err := parseInterleaved(fs, args)
+	if err != nil {
 		if err == flag.ErrHelp {
 			return exitOK
 		}
 		return exitUsage
 	}
-	_, _ = jsonOut, noCache // used by the lookup path (RFP Phase 1)
 
 	if *showVersion {
 		printVersion(stdout, version)
@@ -68,20 +77,145 @@ func run(args []string, version string, stdin io.Reader, stdout, stderr io.Write
 	warn(stderr, cfg)
 
 	if *clearCache {
-		fmt.Fprintln(stderr, "error: --clear-cache is not implemented yet (RFP Phase 1)")
-		return exitUsage
+		if len(positional) > 0 {
+			fmt.Fprintln(stderr, "error: --clear-cache takes no addresses")
+			return exitUsage
+		}
+		n, err := (&cache.Store{Dir: cfg.CacheDir}).Clear()
+		if err != nil {
+			fmt.Fprintf(stderr, "error: clear cache: %v\n", err)
+			return exitError
+		}
+		fmt.Fprintf(stdout, "removed %d cache entries from %s\n", n, cfg.CacheDir)
+		return exitOK
 	}
 
-	if fs.NArg() == 0 && isTerminal(stdin) {
+	if len(positional) == 0 && isTerminal(stdin) {
 		usage(stderr)
+		return exitUsage
+	}
+	ips, err := gatherIPs(positional, stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitUsage
+	}
+	if len(ips) == 0 {
+		usage(stderr)
+		fmt.Fprintln(stderr, "\nerror: no addresses given (pass them as arguments or on stdin)")
 		return exitUsage
 	}
 	if err := cfg.Ready(); err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return exitUsage
 	}
-	fmt.Fprintln(stderr, "error: lookups are not implemented yet (RFP Phase 1)")
-	return exitUsage
+
+	rep := NewEngine(cfg, version).Lookup(ips, *noCache)
+	if *jsonOut {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(rep); err != nil {
+			fmt.Fprintf(stderr, "error: encode results: %v\n", err)
+			return exitError
+		}
+	} else {
+		renderText(stdout, rep)
+	}
+	for _, w := range rep.Warnings {
+		fmt.Fprintf(stderr, "warning: %s\n", w)
+	}
+	for i := range rep.Results {
+		for _, e := range rep.Results[i].SourceErrors() {
+			fmt.Fprintf(stderr, "error: %s: %s\n", rep.Results[i].IP, e)
+		}
+	}
+	if rep.Degraded > 0 {
+		return exitError
+	}
+	return exitOK
+}
+
+// gatherIPs validates every input before any network I/O; one bad address
+// fails the whole invocation, so a typo never half-runs a triage. It returns
+// the canonical addresses to send, duplicates kept (the engine asks once).
+func gatherIPs(args []string, stdin io.Reader) ([]string, error) {
+	raw := args
+	if len(raw) == 0 {
+		sc := bufio.NewScanner(stdin)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			raw = append(raw, line)
+		}
+		if err := sc.Err(); err != nil {
+			return nil, fmt.Errorf("read stdin: %w", err)
+		}
+	}
+	return Validate(raw)
+}
+
+// Validate turns raw inputs into the canonical addresses to send, refusing the
+// whole batch on the first input that cannot be sent, and refusing more than
+// MaxPerCall distinct addresses.
+func Validate(raw []string) ([]string, error) {
+	out := make([]string, 0, len(raw))
+	distinct := map[string]bool{}
+	for _, r := range raw {
+		addr, err := ipaddr.Parse(r)
+		if err != nil {
+			return nil, err
+		}
+		s := addr.String()
+		distinct[s] = true
+		out = append(out, s)
+	}
+	if len(distinct) > MaxPerCall {
+		return nil, fmt.Errorf("%d distinct addresses; the ceiling is %d per call (both free tiers allow 1,000 lookups a day)", len(distinct), MaxPerCall)
+	}
+	return out, nil
+}
+
+// NewEngine builds the engine for a configuration: one HTTP client per source,
+// each refusing redirects because each carries a key.
+func NewEngine(cfg *config.Config, version string) *engine.Engine {
+	ua := "vpn-lookup/" + version
+	e := &engine.Engine{
+		Cache:    &cache.Store{Dir: cfg.CacheDir},
+		IPAPITTL: cfg.IPAPITTL,
+		Now:      time.Now,
+	}
+	if cfg.HasIPAPI() {
+		e.IPAPI = &ipapi.Client{HTTP: keyClient(cfg), BaseURL: cfg.IPAPIBaseURL, APIKey: cfg.IPAPIKey, UserAgent: ua}
+	}
+	if cfg.HasProxycheck() {
+		e.Proxycheck = &proxycheck.Client{HTTP: keyClient(cfg), BaseURL: cfg.ProxycheckBaseURL, APIKey: cfg.ProxycheckKey, UserAgent: ua}
+	}
+	return e
+}
+
+func keyClient(cfg *config.Config) *http.Client {
+	return &http.Client{Timeout: cfg.Timeout, CheckRedirect: guard.RefuseRedirects}
+}
+
+// parseInterleaved parses flags that appear anywhere among the positional
+// arguments, and returns the positionals (from opencti-lookup). Go's flag
+// package stops at the first non-flag argument, so `vpn-lookup 1.2.3.4 --json`
+// would otherwise read --json as an address.
+func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	rest := args
+	for {
+		if err := fs.Parse(rest); err != nil {
+			return nil, err
+		}
+		rest = fs.Args()
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		positional = append(positional, rest[0])
+		rest = rest[1:]
+	}
 }
 
 // runMCP starts the stdio MCP server. Diagnostics go to stderr only: stdout
@@ -147,8 +281,9 @@ reaches the address itself. Results are inference — never a basis for
 automatic blocking. For your organization's own work only.
 
 Usage:
-  vpn-lookup [flags] <ip> [ip...]   # IPv4/IPv6, up to 100
+  vpn-lookup [flags] <ip> [ip...]   # IPv4/IPv6, up to 100; flags may come anywhere
   vpn-lookup [flags]                # addresses from stdin, one per line
+  vpn-lookup --clear-cache          # delete every cache entry
   vpn-lookup mcp [--config <path>]  # run as a local MCP server (stdio)
 
 Flags:
@@ -160,11 +295,14 @@ Flags:
   --version         print version
 
 Verdicts: tor / vpn / relay / gateway / mail_gateway / dns_resolver /
-satellite / proxy / hosting / none / unknown.
+satellite / proxy / hosting / none / unknown. "none" means every enabled
+source answered and none reported an intermediary — not that the line is
+residential; "unknown" means a source failed.
+
+Private, loopback, documentation and other non-public addresses are refused
+before anything is sent.
 
 Exit codes: 0 all lookups completed / 1 a source failed / 2 usage error.
 Verdicts are never encoded in exit codes — scripts should read --json.
-
-This build is a scaffold: lookups are not implemented yet.
 `, "\n"))
 }

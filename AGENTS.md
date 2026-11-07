@@ -11,9 +11,7 @@ into one verdict with per-source evidence and `seen_by` corroboration.
 Module path: `github.com/nlink-jp/vpn-lookup`. Design authority:
 [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) (English beside it).
 
-**Status: scaffold (RFP Phase 2 of the org process).** Config, the CLI's `--version` /
-help contract, and the MCP server's `get_usage` / `cache_status` work. The lookup engine,
-the two clients, the cache, the public-address check and `check_ip` are RFP Phase 1 work.
+**Status: RFP Phase 1 done (CLI lookups); MCP `check_ip` is Phase 2.** Not released.
 
 ## Build / test
 
@@ -34,15 +32,19 @@ Go 1.25+. One dependency, the organization's TOML decoder `github.com/nlink-jp/t
 main.go              Entry point; delegates to internal/app
 source_test.go       No raw control or bidi character in any source file
 internal/config/     Strict TOML + VPN_LOOKUP_* loader (ported from opencti-lookup)
-internal/app/        CLI shell: flags, dispatch (lookups: Phase 1)
+internal/ipaddr/     Public-address gate + Target (what is sent), ported from shodan-lookup
+internal/guard/      Clean (Cc/Cf), RefuseRedirects, ScrubURL — every client uses all three
+internal/ipapi/      ipapi.is client (bulk POST, key in the JSON body)
+internal/proxycheck/ proxycheck.io v3 client (key + tag=0 in the URL, ips in the body)
+internal/verdict/    Pure synthesis: egress first, tor > vpn > proxy > hosting, none/unknown
+internal/cache/      Per-source JSON-file cache (ported from shodan-lookup), dir 0700
+internal/engine/     Per-source cache lookups, one request per source, fresh verdicts
+internal/app/        CLI shell: flags (anywhere), validation, text/JSON, --clear-cache
 internal/mcp/        Zero-dep stdio JSON-RPC 2.0 server; usage.md pinned by meta-tests
 e2e/                 Live suite (build tag "e2e"), Phase 3
 docs/{en,ja}/        RFP
 ```
 
-Planned in Phase 1: `internal/ipaddr` (ported from shodan-lookup), `internal/ipapi`,
-`internal/proxycheck`, `internal/verdict` (pure synthesis), `internal/cache` (per source),
-`internal/engine`.
 
 ## Copy sources (chosen per package by last change, 2026-11-07)
 
@@ -75,7 +77,22 @@ Planned in Phase 1: `internal/ipaddr` (ported from shodan-lookup), `internal/ipa
 - **`--version` is handled before config is read**, so a broken config never hides which
   build is installed (brew test runs it).
 - **proxycheck.io accepts an invalid key silently** (answers 200 as if unregistered), so a
-  response cannot tell whether the key took effect. Whether it reads the key from the POST
-  body is an open item (RFP §7), to be settled with a dashboard custom-rule marker.
+  response cannot tell whether the key took effect, **and it does not read a key from the POST
+  body** — measured 2026-11-07 on the dashboard counter (which lags about an hour): only the
+  URL-key queries were counted. So the key is in the URL, and every error path runs
+  `guard.ScrubURL`. `tag=0` queries are counted too.
+- **Both APIs key their responses by the exact string sent** (a non-canonical IPv6 comes back
+  under the same spelling): send `netip.Addr.String()` and map back by it.
+- **Invalid entries:** ipapi.is drops them silently (so a missing entry is a failure);
+  proxycheck.io returns `{"error": "..."}` per entry, or HTTP 400 `{"status":"error"}` when
+  nothing in the request is valid. Wrong paths answer 404 HTML on both; a bad ipapi.is key is
+  403 `ERR_FORBIDDEN_INVALID_API_KEY`.
+- **Only ipapi.is identifies managed services.** Measured: Cisco OpenDNS → `dns_resolver`,
+  Proofpoint → `email_gateway`, Starlink → `satellite`, Zscaler → `secure_web_gateway`
+  (proxycheck.io called them Business / Wireless / vpn+hosting). That is why its
+  `egress_service` decides first.
+- **Fixtures are hand-written**, never captured responses, and never the addresses of hosts
+  seen in measurement. Client tests use documentation ranges; CLI tests (which refuse those)
+  use well-known resolver addresses with fictional data.
 - **A URL parse error must not quote the URL** (Go's `url.Error` does): config reports the
   inner error only.
