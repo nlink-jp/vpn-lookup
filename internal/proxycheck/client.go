@@ -25,6 +25,9 @@ import (
 // DefaultBaseURL is the proxycheck.io v3 API root.
 const DefaultBaseURL = "https://proxycheck.io/v3"
 
+// maxServices caps the operator's service list kept per address.
+const maxServices = 10
+
 // Doer is the minimal HTTP surface the client needs.
 type Doer interface {
 	Do(*http.Request) (*http.Response, error)
@@ -205,19 +208,22 @@ func decode(v json.RawMessage) (*Result, error) {
 		Compromised: d.Compromised, Scraper: d.Scraper, Risk: d.Risk, Confidence: d.Confidence,
 	}
 	if w.Network != nil {
-		r.NetworkType = guard.Clean(w.Network.Type)
-		r.Provider = guard.Clean(w.Network.Provider)
+		r.NetworkType = guard.Name(w.Network.Type)
+		r.Provider = guard.Name(w.Network.Provider)
 	}
 	if w.Operator != nil {
-		r.Operator = guard.Clean(w.Operator.Name)
+		r.Operator = guard.Name(w.Operator.Name)
 		for _, s := range w.Operator.Services {
-			if s = strings.ToLower(guard.Clean(s)); s != "" {
+			if len(r.Services) == maxServices {
+				break // a list with no upstream bound, capped so a result fits a client's budget
+			}
+			if s = strings.ToLower(guard.Name(s)); s != "" {
 				r.Services = append(r.Services, s)
 			}
 		}
 	}
 	if w.History != nil {
-		r.DelistDateTime = guard.Clean(w.History.DelistDateTime)
+		r.DelistDateTime = guard.Name(w.History.DelistDateTime)
 	}
 	return r, nil
 }

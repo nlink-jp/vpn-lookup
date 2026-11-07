@@ -25,6 +25,20 @@ func Clean(s string) string {
 	}, s))
 }
 
+// MaxName is the most characters a third-party name keeps. Upstream sets no
+// limit (a WHOIS name is whatever the registrant wrote), and every result has
+// to fit a client's budget.
+const MaxName = 200
+
+// Name cleans a third-party name and caps it at MaxName characters.
+func Name(s string) string {
+	s = Clean(s)
+	if r := []rune(s); len(r) > MaxName {
+		return string(r[:MaxName]) + "…"
+	}
+	return s
+}
+
 // Truncate shortens third-party text for an error message, cleaned.
 func Truncate(b []byte, n int) string {
 	if len(b) > n {

@@ -214,18 +214,18 @@ func decode(v json.RawMessage) (*Result, error) {
 		Crawler: crawlerName(w.IsCrawler),
 	}
 	if w.VPN != nil && guard.Clean(w.VPN.Service) != "" {
-		r.VPN = &VPN{Service: guard.Clean(w.VPN.Service), Type: guard.Clean(w.VPN.Type), LastSeen: guard.Clean(w.VPN.LastSeenStr)}
+		r.VPN = &VPN{Service: guard.Name(w.VPN.Service), Type: guard.Name(w.VPN.Type), LastSeen: guard.Name(w.VPN.LastSeenStr)}
 	}
 	if w.Datacenter != nil {
-		r.Datacenter = guard.Clean(w.Datacenter.Datacenter)
+		r.Datacenter = guard.Name(w.Datacenter.Datacenter)
 	}
 	if w.Egress != nil && guard.Clean(w.Egress.Type) != "" {
-		r.Egress = &Egress{Type: strings.ToLower(guard.Clean(w.Egress.Type)), Provider: guard.Clean(w.Egress.Provider)}
+		r.Egress = &Egress{Type: strings.ToLower(guard.Name(w.Egress.Type)), Provider: guard.Name(w.Egress.Provider)}
 	}
 	if w.Company != nil {
-		r.CompanyType = strings.ToLower(guard.Clean(w.Company.Type))
-		r.CompanyName = guard.Clean(w.Company.Name)
-		r.AbuserScore = guard.Clean(w.Company.AbuserScore)
+		r.CompanyType = strings.ToLower(guard.Name(w.Company.Type))
+		r.CompanyName = guard.Name(w.Company.Name)
+		r.AbuserScore = guard.Name(w.Company.AbuserScore)
 	}
 	return r, nil
 }
@@ -245,7 +245,7 @@ func truthy(v json.RawMessage) bool {
 func crawlerName(v json.RawMessage) string {
 	var s string
 	if json.Unmarshal(v, &s) == nil {
-		return guard.Clean(s)
+		return guard.Name(s)
 	}
 	return ""
 }

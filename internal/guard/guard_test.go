@@ -21,6 +21,17 @@ func TestCleanStripsControlAndFormatCharacters(t *testing.T) {
 	}
 }
 
+func TestNameIsCleanedAndCapped(t *testing.T) {
+	long := strings.Repeat("あ", MaxName+50)
+	got := Name(long)
+	if r := []rune(got); len(r) != MaxName+1 || r[MaxName] != '…' {
+		t.Fatalf("Name kept %d runes; want %d plus an ellipsis", len(r), MaxName)
+	}
+	if Name("Ex\u001bample") != "Example" {
+		t.Fatal("Name must clean too")
+	}
+}
+
 func TestTruncateCleansToo(t *testing.T) {
 	if got := Truncate([]byte("bad\u001b[2Jthing"), 100); got != "bad[2Jthing" {
 		t.Fatalf("Truncate = %q", got)
