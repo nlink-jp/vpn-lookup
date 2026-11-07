@@ -1,0 +1,29 @@
+# vpn-lookup configuration
+# Copy to ~/.config/vpn-lookup/config.toml (or $XDG_CONFIG_HOME/vpn-lookup/)
+# and chmod 600 — it holds API keys. Every value is optional; an unknown key
+# is an error, not ignored.
+#
+# Keys: one per organization. Both free tiers are granted once per
+# organization and forbid multiple accounts; analysts in the same
+# organization share the key. A source without a key is not used.
+# For your organization's own work only (ipapi.is terms §2.3 forbid
+# answering third parties' questions, e.g. client IR engagements).
+
+[ipapi]
+# https://ipapi.is — free account, 1,000 lookups/day. Without a key ipapi.is
+# returns no detection flags, so the source is simply not used.
+#api_key = "YOUR-IPAPI-KEY"
+
+[proxycheck]
+# https://proxycheck.io — free account, 1,000 queries/day. Do not set
+# dashboard custom rules: they rewrite the responses this tool reads.
+#api_key = "YOUR-PROXYCHECK-KEY"
+
+[cache]
+# Hours an ipapi.is answer stays fresh (1-720; its terms allow at most 30
+# days). proxycheck.io answers follow its own recommendation and are not
+# configurable.
+#ipapi_ttl_hours = 24
+
+[network]
+#timeout_seconds = 15
