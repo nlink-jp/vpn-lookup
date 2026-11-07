@@ -3,8 +3,8 @@
 Is this IP address an intermediary — a VPN, a proxy, Tor, a relay, a gateway, a hosting
 provider — and whose?
 
-> **Status: in development.** The CLI and the MCP server both look addresses up (RFP
-> Phases 1–2); the live end-to-end suite and the release are next. Not released yet. The design is in
+> **Status: release candidate.** The CLI and the MCP server both look addresses up, with a
+> live end-to-end suite; not released yet. The design is in
 > [docs/en/vpn-lookup-rfp.md](docs/en/vpn-lookup-rfp.md).
 
 `vpn-lookup` is a CLI and local MCP server that layers two IP-intelligence services whose
@@ -36,9 +36,13 @@ is a request to the provider.
 - **One key per organization.** Both free tiers are granted once per organization and forbid
   multiple accounts; analysts in the same organization share the key.
 - **Every address looked up reaches both services.** ipapi.is states it does not log looked-up
-  addresses; proxycheck.io is always queried with `tag=0`, which stops logging and its
-  post-query testing (a clean address may still be held five minutes). If you check your
-  own users' login origins, you are sending personal data to these services.
+  addresses and keeps personal data in the EEA. proxycheck.io is always queried with `tag=0`,
+  which stops logging and its post-query testing (a clean address may still be held five
+  minutes for inference); it stores data where it is generated (Canada, the UK, the EU or
+  Singapore). If you check your own users' login origins, you are sending personal data to
+  these services, and each lookup spends one of 1,000 free lookups a day on each.
+- **In the proxycheck.io dashboard**, turn off "Address Logging" (an account-wide backstop
+  for `tag=0`) and set no custom rules — they rewrite the responses this tool reads.
 - **Results are inference, not proof.** Never use them as the basis for automatic blocking.
 
 ## Install
@@ -95,7 +99,14 @@ a.b.c.d
 
 See [config.example.toml](config.example.toml). The file is read strictly: an unknown key,
 an empty value or a missing `--config` file is an error. Environment variables
-(`VPN_LOOKUP_IPAPI_API_KEY`, `VPN_LOOKUP_PROXYCHECK_API_KEY`, …) override the file.
+(listed below) override the file.
+
+Environment variables override the file: `VPN_LOOKUP_IPAPI_API_KEY`,
+`VPN_LOOKUP_PROXYCHECK_API_KEY`, `VPN_LOOKUP_IPAPI_BASE_URL`,
+`VPN_LOOKUP_PROXYCHECK_BASE_URL`, `VPN_LOOKUP_CACHE_DIR`, `VPN_LOOKUP_IPAPI_TTL_HOURS`,
+`VPN_LOOKUP_TIMEOUT_SECONDS`. A `base_url` must be https (plain http only to a loopback
+host, for tests). A syntax error in the file is reported by line and column without
+quoting the text, since it may be a key.
 
 ## MCP server
 

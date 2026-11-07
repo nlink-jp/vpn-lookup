@@ -28,5 +28,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   meta-test pins that.
 - Third-party names are capped at 200 characters and an operator's service
   list at 10, so results fit an MCP client's budget.
+- From the pre-release review: a config syntax error never quotes the value
+  (it may be an unquoted key); a verdict given while a source failed, or one
+  that overrode a tor / vpn / proxy report, says so in its notes; a boolean
+  is_crawler is kept; proxycheck.io's message is capped; the 128 KB ceiling
+  measures the escaped wire text; inputs are capped at 1,000 with duplicates;
+  cached answers are scoped by endpoint and key fingerprint; --clear-cache
+  removes temp files and runs with a broken config; MCP argument names must
+  match exactly.
 - Shared safeguards: third-party text loses control and format characters,
   the key-carrying HTTP clients refuse redirects, and no error quotes a URL.

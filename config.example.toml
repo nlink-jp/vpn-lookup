@@ -13,17 +13,25 @@
 # https://ipapi.is — free account, 1,000 lookups/day. Without a key ipapi.is
 # returns no detection flags, so the source is simply not used.
 #api_key = "YOUR-IPAPI-KEY"
+# Endpoint override, for tests only: https, or plain http to a loopback host.
+#base_url = "https://api.ipapi.is"
 
 [proxycheck]
 # https://proxycheck.io — free account, 1,000 queries/day. Do not set
 # dashboard custom rules: they rewrite the responses this tool reads.
 #api_key = "YOUR-PROXYCHECK-KEY"
+# In the dashboard, also turn off "Address Logging" — vpn-lookup always sends
+# tag=0, and this is the account-wide backstop.
+# Endpoint override, for tests only: https, or plain http to a loopback host.
+#base_url = "https://proxycheck.io/v3"
 
 [cache]
 # Hours an ipapi.is answer stays fresh (1-720; its terms allow at most 30
 # days). proxycheck.io answers follow its own recommendation and are not
 # configurable.
 #ipapi_ttl_hours = 24
+# Cache directory (default $XDG_CACHE_HOME/vpn-lookup or ~/.cache/vpn-lookup).
+#dir = "~/.cache/vpn-lookup"
 
 [network]
 #timeout_seconds = 15

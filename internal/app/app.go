@@ -294,7 +294,7 @@ Usage:
   vpn-lookup [flags] <ip> [ip...]   # IPv4/IPv6, up to 100; flags may come anywhere
   vpn-lookup [flags]                # addresses from stdin, one per line
   vpn-lookup --clear-cache          # delete every cache entry
-  vpn-lookup mcp [--config <path>]  # run as a local MCP server (stdio)
+  vpn-lookup mcp [--config <path>] [--timeout <dur>]  # local MCP server (stdio)
 
 Flags:
   --json            structured output (default: human-readable text)

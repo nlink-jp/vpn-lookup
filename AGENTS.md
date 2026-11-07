@@ -11,7 +11,7 @@ into one verdict with per-source evidence and `seen_by` corroboration.
 Module path: `github.com/nlink-jp/vpn-lookup`. Design authority:
 [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) (English beside it).
 
-**Status: RFP Phases 1–2 done (CLI and MCP lookups); Phase 3 (live e2e, release) next.** Not released.
+**Status: RFP Phases 1–3 implemented (CLI and MCP lookups, live e2e), independently reviewed before release; not released yet.**
 
 ## Build / test
 
@@ -68,8 +68,10 @@ docs/{en,ja}/        RFP
   detection log for 180 days and clean ones get unpublished "post-query testing".
 - **Cache per source.** ipapi.is 24 h default, 30-day ceiling (its terms §2.2).
   proxycheck.io: clean 1 h, anonymous until `delist_datetime`, at most 15 min.
-- **Non-public addresses are refused before anything is sent**; IPv4-mapped / 6to4 /
-  Teredo etc. are unwrapped and the inner IPv4 is what gets sent.
+- **Non-public addresses are refused before anything is sent** (the embedded IPv4 of every
+  IPv6 form is judged too). What is sent: IPv4-mapped, IPv4-compatible and NAT64 send the
+  IPv4 host they spell; 6to4 and Teredo send the IPv6 address (their IPv4 is the tunnel's
+  endpoint).
 - **For the organization's own work only** (ipapi.is §2.3 forbids client IR engagements).
 
 ## Gotchas
@@ -81,6 +83,16 @@ docs/{en,ja}/        RFP
   operator services at 10 in the clients; check_ip's compact JSON drops results from the
   tail into `omitted` only past 128 KB. A realistic result is ~880 bytes (100 → ~90 KB);
   every name at its cap would be ~430 KB, which is what the backstop is for.
+- **Cache keys carry each source's scope** — its endpoint and an 8-byte fingerprint of its
+  key (`app.scope`) — hashed again with the address into the file name. A changed key or
+  base_url asks again; the key is never on disk.
+- **A config syntax error never quotes the value**: nlink-jp/toml quotes the token it cannot
+  parse, which may be an unquoted key; `describeTOMLError` reports line/column only.
+- **Notes carry what the verdict alone hides**: a failed source next to a verdict
+  (`FailedNote`), and a tor / vpn / proxy report that a managed-service verdict overrode
+  (`AlsoReportedNote`).
+- **MCP argument names are exact**: encoding/json matches case-insensitively, so
+  `decodeArgs` checks the raw names against the declared json tags.
 - **cache_status makes one network call** when proxycheck.io has a key: its dashboard usage
   API (key in the URL, counts an hour late). ipapi.is exposes no quota.
 - **`--version` is handled before config is read**, so a broken config never hides which
