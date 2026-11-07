@@ -277,3 +277,28 @@ func TestRedactedHidesKeys(t *testing.T) {
 		t.Fatal("Redacted must not modify the original")
 	}
 }
+
+// The decoder quotes the token it cannot parse; an API key written without
+// quotes must not reach stderr (and from there an MCP client's log).
+func TestParseErrorNeverQuotesTheValue(t *testing.T) {
+	for _, body := range []string{
+		"[ipapi]\napi_key = 7f3a9c1b2d4e5f60718293a4b5c6d7e8\n",
+		"[proxycheck]\napi_key = 2026-11-07secretkeyvalue\n",
+		"[ipapi]\napi_key = secretkeyvalue\n",
+		"[network]\ntimeout_seconds = \"7f3a9c1b2d4e\"\n",
+	} {
+		dir := isolate(t)
+		_, err := Load(write(t, dir, body), 0)
+		if err == nil {
+			t.Fatalf("%q was accepted", body)
+		}
+		for _, secret := range []string{"7f3a9c1b2d4e", "secretkeyvalue"} {
+			if strings.Contains(err.Error(), secret) {
+				t.Fatalf("the error quotes the value: %v", err)
+			}
+		}
+		if !strings.Contains(err.Error(), "line") {
+			t.Fatalf("the error must still say where: %v", err)
+		}
+	}
+}

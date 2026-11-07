@@ -138,7 +138,7 @@ func (cfg *Config) readFile(path string, explicit bool) error {
 			}
 			return fmt.Errorf("config file %s: unknown key(s): %s (known: %s)", path, strings.Join(names, ", "), knownKeys)
 		}
-		return fmt.Errorf("config file %s: %w", path, err)
+		return fmt.Errorf("config file %s: %s", path, describeTOMLError(err))
 	}
 	cfg.Path = path
 
@@ -174,6 +174,21 @@ func (cfg *Config) readFile(path string, explicit bool) error {
 		cfg.Timeout = time.Duration(*v) * time.Second
 	}
 	return nil
+}
+
+// describeTOMLError says where the file is wrong without quoting what is
+// there: the decoder's own messages quote the offending token (up to 40
+// characters), and the token may be an API key written without quotes.
+func describeTOMLError(err error) string {
+	var pe *toml.ParseError
+	if errors.As(err, &pe) {
+		return fmt.Sprintf("not valid TOML at line %d, column %d (the text is not shown: it may hold a key — check the quoting there)", pe.Line, pe.Column)
+	}
+	var de *toml.DecodeError
+	if errors.As(err, &de) {
+		return fmt.Sprintf("line %d: a value of the wrong type (strings are quoted, numbers are not)", de.Line)
+	}
+	return "not valid TOML (details withheld: they may quote a key)"
 }
 
 func (cfg *Config) applyEnv() error {
