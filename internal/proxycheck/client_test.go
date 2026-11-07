@@ -162,3 +162,38 @@ func TestThirdPartyTextIsCleaned(t *testing.T) {
 		t.Fatalf("result = %+v", r)
 	}
 }
+
+func TestUsageReadsTheDashboard(t *testing.T) {
+	var gotPath, gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotKey = r.URL.Path, r.URL.Query().Get("key")
+		fmt.Fprint(w, `{"Burst Tokens Available": 1, "Queries Today": 42, "Daily Limit": 1000, "Plan Tier": "Free"}`)
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), BaseURL: srv.URL + "/v3", APIKey: "k"}
+	u, err := c.Usage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/dashboard/export/usage/" || gotKey != "k" || u.QueriesToday != 42 || u.DailyLimit != 1000 {
+		t.Fatalf("path=%q key=%q usage=%+v", gotPath, gotKey, u)
+	}
+}
+
+func TestUsageFailuresAreErrorsWithoutTheKey(t *testing.T) {
+	for _, body := range []string{`{"error":"x"}`, `not json`} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, body)
+		}))
+		c := &Client{HTTP: srv.Client(), BaseURL: srv.URL, APIKey: "k-SECRET"}
+		_, err := c.Usage()
+		srv.Close()
+		if err == nil || strings.Contains(err.Error(), "k-SECRET") {
+			t.Fatalf("body %q: err = %v", body, err)
+		}
+	}
+	c := &Client{HTTP: &http.Client{}, BaseURL: "http://127.0.0.1:1", APIKey: "k-SECRET"}
+	if _, err := c.Usage(); err == nil || strings.Contains(err.Error(), "k-SECRET") {
+		t.Fatalf("transport error leaked the key or did not fail: %v", err)
+	}
+}

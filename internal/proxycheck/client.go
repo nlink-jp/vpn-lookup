@@ -227,3 +227,53 @@ func decode(v json.RawMessage) (*Result, error) {
 	}
 	return r, nil
 }
+
+// Usage is the account's daily usage from the dashboard API. Measured
+// 2026-11-07: the counts update about an hour late.
+type Usage struct {
+	QueriesToday int `json:"queries_today"`
+	DailyLimit   int `json:"daily_limit"`
+}
+
+// Usage reads the account's daily usage (GET /dashboard/export/usage/ on the
+// API's host, key in the query string like every proxycheck.io call).
+func (c *Client) Usage() (*Usage, error) {
+	base := strings.TrimRight(c.BaseURL, "/")
+	if base == "" {
+		base = DefaultBaseURL
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return nil, fmt.Errorf("proxycheck.io: base URL: %w", guard.ScrubURL(err))
+	}
+	q := url.Values{}
+	q.Set("key", c.APIKey)
+	req, err := http.NewRequest(http.MethodGet, u.Scheme+"://"+u.Host+"/dashboard/export/usage/?"+q.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("proxycheck.io: %w", guard.ScrubURL(err))
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("proxycheck.io: %w", guard.ScrubURL(err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("proxycheck.io: read usage: %w", guard.ScrubURL(err))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("proxycheck.io: usage: HTTP %d: %s", resp.StatusCode, guard.Truncate(raw, 200))
+	}
+	var w struct {
+		QueriesToday *int `json:"Queries Today"`
+		DailyLimit   *int `json:"Daily Limit"`
+	}
+	if err := json.Unmarshal(raw, &w); err != nil || w.QueriesToday == nil || w.DailyLimit == nil {
+		return nil, fmt.Errorf("proxycheck.io: usage: unexpected answer: %s", guard.Truncate(raw, 200))
+	}
+	return &Usage{QueriesToday: *w.QueriesToday, DailyLimit: *w.DailyLimit}, nil
+}
