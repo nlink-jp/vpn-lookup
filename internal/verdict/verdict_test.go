@@ -151,3 +151,45 @@ func TestEveryVerdictIsReachable(t *testing.T) {
 		}
 	}
 }
+
+// A failed source never reads as none (rule 3), and a verdict the surviving
+// source gave alone says so: the failed one might have reported more.
+func TestFailedSourceIsNamedNextToAVerdict(t *testing.T) {
+	o := Synthesize(Inputs{ia(ipapi.Result{IsDatacenter: true}), pcFailed})
+	if o.Verdict != Hosting || !hasNote(o, FailedNote("proxycheck.io")) {
+		t.Fatalf("got %+v", o)
+	}
+	o = Synthesize(Inputs{iaFailed, pc(proxycheck.Result{Hosting: true})})
+	if !hasNote(o, FailedNote("ipapi.is")) || !hasNote(o, NoIdentification) {
+		t.Fatalf("got %+v", o)
+	}
+	if o := Synthesize(Inputs{ia(ipapi.Result{}), pcFailed}); o.Verdict != Unknown || hasNote(o, FailedNote("proxycheck.io")) {
+		t.Fatalf("unknown already says it; got %+v", o)
+	}
+}
+
+// The managed-service identification takes precedence, but a tor / vpn /
+// proxy report is named, not dropped.
+func TestRuleOneNamesWhatItOverrode(t *testing.T) {
+	o := Synthesize(Inputs{ia(ipapi.Result{IsSatellite: true}), pc(proxycheck.Result{VPN: true})})
+	if o.Verdict != Satellite || !hasNote(o, AlsoReportedNote("proxycheck.io", VPN)) {
+		t.Fatalf("got %+v", o)
+	}
+	o = Synthesize(Inputs{ia(ipapi.Result{IsTor: true, Egress: egress("dns_resolver")}), pc(proxycheck.Result{})})
+	if o.Verdict != DNSResolver || !hasNote(o, AlsoReportedNote("ipapi.is", Tor)) {
+		t.Fatalf("got %+v", o)
+	}
+	o = Synthesize(Inputs{ia(ipapi.Result{Egress: egress("email_gateway")}), pc(proxycheck.Result{Hosting: true})})
+	if len(o.Notes) != 0 {
+		t.Fatalf("hosting alongside a managed service is not worth a note: %+v", o)
+	}
+}
+
+func hasNote(o Outcome, n string) bool {
+	for _, x := range o.Notes {
+		if x == n {
+			return true
+		}
+	}
+	return false
+}

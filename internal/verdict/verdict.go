@@ -87,6 +87,21 @@ const UnknownEgress = "ipapi.is names a managed egress service of a type this bu
 // NoIdentification is the note when ipapi.is did not answer.
 const NoIdentification = "ipapi.is did not answer, so relays, gateways, email gateways, DNS resolvers and satellite ISPs cannot be told apart (proxycheck.io reads iCloud Private Relay as vpn and Zscaler as hosting)"
 
+// FailedNote is the note when a source failed for the address but a verdict
+// was still given: the failed source might have reported a stronger class
+// (measured: proxycheck.io alone named a VPN that ipapi.is called a data
+// centre).
+func FailedNote(source string) string {
+	return source + " failed for this address, so this verdict rests on the other source alone; " + source + " might have reported a stronger class"
+}
+
+// AlsoReportedNote is the note when rule 1 decided but a source also reported
+// tor, vpn or proxy: the managed-service identification takes precedence, and
+// the stronger-sounding report is named rather than dropped.
+func AlsoReportedNote(source string, v Verdict) string {
+	return source + " also reports " + string(v) + "; the managed service ipapi.is names decided the verdict"
+}
+
 // Synthesize applies the rule:
 //
 //  1. an ipapi.is egress_service of a known type decides the verdict
@@ -96,6 +111,19 @@ const NoIdentification = "ipapi.is did not answer, so relays, gateways, email ga
 //  3. nothing reported: none when every enabled source answered, unknown when
 //     one failed — a failure never reads as "no intermediary".
 func Synthesize(in Inputs) Outcome {
+	o := synthesize(in)
+	if o.Verdict != Unknown {
+		if in.IPAPI.Failed {
+			o.Notes = append(o.Notes, FailedNote("ipapi.is"))
+		}
+		if in.Proxycheck.Failed {
+			o.Notes = append(o.Notes, FailedNote("proxycheck.io"))
+		}
+	}
+	return o
+}
+
+func synthesize(in Inputs) Outcome {
 	var o Outcome
 	ia, pc := in.IPAPI.Result, in.Proxycheck.Result
 
@@ -109,15 +137,20 @@ func Synthesize(in Inputs) Outcome {
 
 	// Rule 1.
 	if ia != nil {
+		decided := Verdict("")
 		if ia.Egress != nil {
 			if v, ok := egressVerdicts[ia.Egress.Type]; ok {
-				o.Verdict, o.SeenBy = v, SeenByIPAPI
-				return o
+				decided = v
+			} else {
+				o.Notes = append(o.Notes, UnknownEgress)
 			}
-			o.Notes = append(o.Notes, UnknownEgress)
 		}
-		if ia.IsSatellite {
-			o.Verdict, o.SeenBy = Satellite, SeenByIPAPI
+		if decided == "" && ia.IsSatellite {
+			decided = Satellite
+		}
+		if decided != "" {
+			o.Verdict, o.SeenBy = decided, SeenByIPAPI
+			o.Notes = append(o.Notes, alsoReported(ia, pc)...)
 			return o
 		}
 	}
@@ -158,6 +191,32 @@ func Synthesize(in Inputs) Outcome {
 		o.Verdict = None
 	}
 	return o
+}
+
+// alsoReported names the strongest of tor / vpn / proxy each source reported,
+// for a verdict rule 1 decided.
+func alsoReported(ia *ipapi.Result, pc *proxycheck.Result) []string {
+	var notes []string
+	pick := func(tor, vpn, proxy bool) Verdict {
+		switch {
+		case tor:
+			return Tor
+		case vpn:
+			return VPN
+		case proxy:
+			return Proxy
+		}
+		return ""
+	}
+	if v := pick(ia.IsTor, ia.IsVPN, ia.IsProxy); v != "" {
+		notes = append(notes, AlsoReportedNote("ipapi.is", v))
+	}
+	if pc != nil {
+		if v := pick(pc.Tor, pc.VPN, pc.Proxy); v != "" {
+			notes = append(notes, AlsoReportedNote("proxycheck.io", v))
+		}
+	}
+	return notes
 }
 
 // proxyKind tells an open proxy from a residential one, as far as the sources

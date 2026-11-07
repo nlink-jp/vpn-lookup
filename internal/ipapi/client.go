@@ -241,11 +241,21 @@ func truthy(v json.RawMessage) bool {
 	return true
 }
 
-// crawlerName reads is_crawler, which is false or the bot's name.
+// UnnamedCrawler stands in when is_crawler is truthy but carries no name.
+const UnnamedCrawler = "unnamed crawler"
+
+// crawlerName reads is_crawler, which is false or the bot's name. Any other
+// truthy value is kept as an unnamed crawler rather than dropped.
 func crawlerName(v json.RawMessage) string {
 	var s string
 	if json.Unmarshal(v, &s) == nil {
-		return guard.Name(s)
+		if s = guard.Name(s); s != "" {
+			return s
+		}
+		return ""
+	}
+	if truthy(v) {
+		return UnnamedCrawler
 	}
 	return ""
 }

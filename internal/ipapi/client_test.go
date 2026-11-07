@@ -155,3 +155,15 @@ func TestThirdPartyTextIsCleaned(t *testing.T) {
 		t.Fatalf("result = %+v", r)
 	}
 }
+
+func TestBooleanCrawlerIsKeptAsUnnamed(t *testing.T) {
+	srv := server(t, 200, `{"192.0.2.10":{"is_crawler":true},"192.0.2.11":{"is_crawler":false}}`, nil)
+	c := &Client{HTTP: srv.Client(), BaseURL: srv.URL, APIKey: "k"}
+	res, err := c.Lookup([]string{"192.0.2.10", "192.0.2.11"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res["192.0.2.10"].Result.Crawler != UnnamedCrawler || res["192.0.2.11"].Result.Crawler != "" {
+		t.Fatalf("got %+v / %+v", res["192.0.2.10"].Result, res["192.0.2.11"].Result)
+	}
+}
