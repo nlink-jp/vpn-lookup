@@ -36,12 +36,19 @@ const (
 )
 
 // Engine answers lookups. A nil client means that source has no key.
+//
+// IPAPIScope and ProxycheckScope go into every cache key of their source: the
+// endpoint and a fingerprint of the key. Answers from a test server, or given
+// to a wrong key (proxycheck.io answers one silently as unregistered), are
+// then never served once the setting changes.
 type Engine struct {
-	IPAPI      IPAPIClient
-	Proxycheck ProxycheckClient
-	Cache      *cache.Store // nil = caching off
-	IPAPITTL   time.Duration
-	Now        func() time.Time
+	IPAPI           IPAPIClient
+	Proxycheck      ProxycheckClient
+	IPAPIScope      string
+	ProxycheckScope string
+	Cache           *cache.Store // nil = caching off
+	IPAPITTL        time.Duration
+	Now             func() time.Time
 }
 
 // SourceView is one source's part of a result. Result is null when the source
@@ -143,7 +150,7 @@ func (e *Engine) lookupIPAPI(ips []string, noCache bool) map[string]SourceView[i
 	var miss []string
 	for _, ip := range ips {
 		if !noCache && e.Cache != nil {
-			if raw, ok := e.Cache.Get(cache.Key("ipapi", ip), e.now(), e.IPAPITTL); ok {
+			if raw, ok := e.Cache.Get(cache.Key("ipapi", e.IPAPIScope, ip), e.now(), e.IPAPITTL); ok {
 				var r ipapi.Result
 				if json.Unmarshal(raw, &r) == nil {
 					views[ip] = SourceView[ipapi.Result]{Result: &r, FromCache: true}
@@ -173,7 +180,7 @@ func (e *Engine) lookupIPAPI(ips []string, noCache bool) map[string]SourceView[i
 			default:
 				r := entries[ip].Result
 				views[ip] = SourceView[ipapi.Result]{Result: r}
-				e.put(cache.Key("ipapi", ip), r)
+				e.put(cache.Key("ipapi", e.IPAPIScope, ip), r)
 			}
 		}
 	}
@@ -185,7 +192,7 @@ func (e *Engine) lookupProxycheck(ips []string, noCache bool) (map[string]Source
 	var miss []string
 	for _, ip := range ips {
 		if !noCache && e.Cache != nil {
-			if raw, at, ok := e.Cache.Load(cache.Key("proxycheck", ip)); ok {
+			if raw, at, ok := e.Cache.Load(cache.Key("proxycheck", e.ProxycheckScope, ip)); ok {
 				var r proxycheck.Result
 				if json.Unmarshal(raw, &r) == nil && e.now().Sub(at) <= proxycheckTTL(&r, at) {
 					views[ip] = SourceView[proxycheck.Result]{Result: &r, FromCache: true}
@@ -216,7 +223,7 @@ func (e *Engine) lookupProxycheck(ips []string, noCache bool) (map[string]Source
 		default:
 			r := ans.Entries[ip].Result
 			views[ip] = SourceView[proxycheck.Result]{Result: r}
-			e.put(cache.Key("proxycheck", ip), r)
+			e.put(cache.Key("proxycheck", e.ProxycheckScope, ip), r)
 		}
 	}
 	return views, warn

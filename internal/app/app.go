@@ -5,6 +5,8 @@ package app
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -70,25 +72,36 @@ func run(args []string, version string, stdin io.Reader, stdout, stderr io.Write
 	}
 
 	cfg, err := config.Load(*configPath, *timeout)
+	if *clearCache {
+		// Deleting cached answers is a duty (ipapi.is §2.5), so a broken config
+		// does not stop it: the directory falls back to VPN_LOOKUP_CACHE_DIR or
+		// the default.
+		if len(positional) > 0 {
+			fmt.Fprintln(stderr, "error: --clear-cache takes no addresses")
+			return exitUsage
+		}
+		dir := config.DefaultCacheDir()
+		if err != nil {
+			if v := strings.TrimSpace(os.Getenv("VPN_LOOKUP_CACHE_DIR")); v != "" {
+				dir = v
+			}
+			fmt.Fprintf(stderr, "warning: config not read (%v); clearing %s\n", err, dir)
+		} else {
+			dir = cfg.CacheDir
+		}
+		n, err := (&cache.Store{Dir: dir}).Clear()
+		if err != nil {
+			fmt.Fprintf(stderr, "error: clear cache: %v\n", err)
+			return exitError
+		}
+		fmt.Fprintf(stdout, "removed %d cache entries from %s\n", n, dir)
+		return exitOK
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return exitUsage
 	}
 	warn(stderr, cfg)
-
-	if *clearCache {
-		if len(positional) > 0 {
-			fmt.Fprintln(stderr, "error: --clear-cache takes no addresses")
-			return exitUsage
-		}
-		n, err := (&cache.Store{Dir: cfg.CacheDir}).Clear()
-		if err != nil {
-			fmt.Fprintf(stderr, "error: clear cache: %v\n", err)
-			return exitError
-		}
-		fmt.Fprintf(stdout, "removed %d cache entries from %s\n", n, cfg.CacheDir)
-		return exitOK
-	}
 
 	if len(positional) == 0 && isTerminal(stdin) {
 		usage(stderr)
@@ -166,11 +179,24 @@ func NewEngine(cfg *config.Config, version string) *engine.Engine {
 	}
 	if cfg.HasIPAPI() {
 		e.IPAPI = &ipapi.Client{HTTP: keyClient(cfg), BaseURL: cfg.IPAPIBaseURL, APIKey: cfg.IPAPIKey, UserAgent: ua}
+		e.IPAPIScope = scope(cfg.IPAPIBaseURL, ipapi.DefaultBaseURL, cfg.IPAPIKey)
 	}
 	if cfg.HasProxycheck() {
 		e.Proxycheck = &proxycheck.Client{HTTP: keyClient(cfg), BaseURL: cfg.ProxycheckBaseURL, APIKey: cfg.ProxycheckKey, UserAgent: ua}
+		e.ProxycheckScope = scope(cfg.ProxycheckBaseURL, proxycheck.DefaultBaseURL, cfg.ProxycheckKey)
 	}
 	return e
+}
+
+// scope is a source's cache scope: its endpoint and a short fingerprint of its
+// key. Only the fingerprint is used, and cache.Key hashes it again with the
+// address into the file name, so the key is never on disk.
+func scope(baseURL, def, key string) string {
+	if baseURL == "" {
+		baseURL = def
+	}
+	sum := sha256.Sum256([]byte(key))
+	return baseURL + "|" + hex.EncodeToString(sum[:8])
 }
 
 func keyClient(cfg *config.Config) *http.Client {

@@ -244,3 +244,17 @@ func TestCacheDirIsPrivate(t *testing.T) {
 		t.Fatalf("cache dir mode = %04o, want 0700", perm)
 	}
 }
+
+func TestClearRemovesLeftoverTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	s := &Store{Dir: dir}
+	if err := s.Put("k.json", json.RawMessage(`1`), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".tmp-123"), []byte(`{"half":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.Clear(); err != nil || n != 2 {
+		t.Fatalf("Clear = %d, %v; want the entry and the temp file", n, err)
+	}
+}

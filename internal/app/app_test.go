@@ -277,3 +277,37 @@ func TestMCPStartsWithoutKeys(t *testing.T) {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
 	}
 }
+
+// A source's cached answers belong to its endpoint and key: changing either
+// asks again instead of serving answers given to the old setting.
+func TestCacheIsScopedByEndpointAndKey(t *testing.T) {
+	isolate(t)
+	var c calls
+	fakeUpstreams(t, &c)
+	runIt(t, "", ipVPN)
+	t.Setenv("VPN_LOOKUP_PROXYCHECK_API_KEY", "wrong")
+	runIt(t, "", ipVPN)
+	if c.ipapi != 1 || c.proxycheck != 2 {
+		t.Fatalf("calls = %+v; a new proxycheck.io key must not be served the old key's answers", c)
+	}
+}
+
+// Deleting cached answers is a duty, so a broken config does not stop it.
+func TestClearCacheWorksWithABrokenConfig(t *testing.T) {
+	dir := isolate(t)
+	cacheDir := filepath.Join(dir, "cache", "vpn-lookup")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "ipapi_x.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(dir, "bad.toml")
+	if err := os.WriteFile(bad, []byte("[nope]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runIt(t, "", "--config", bad, "--clear-cache")
+	if code != 0 || !strings.Contains(out, "removed 1 cache entries") || !strings.Contains(errOut, "config not read") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
+	}
+}
