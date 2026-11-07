@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"github.com/nlink-jp/vpn-lookup/internal/cache"
 	"github.com/nlink-jp/vpn-lookup/internal/engine"
@@ -85,7 +87,41 @@ func decodeArgs(raw json.RawMessage, into any) error {
 	if err := dec.Decode(into); err != nil {
 		return errors.New("arguments: " + err.Error())
 	}
+	// encoding/json matches names case-insensitively, so "IPS" would reach
+	// ips. The schema says ips; refuse any other spelling by name.
+	var names map[string]json.RawMessage
+	if json.Unmarshal(raw, &names) == nil {
+		declared := jsonNames(into)
+		for n := range names {
+			if !declared[n] {
+				return fmt.Errorf("arguments: json: unknown field %q", n)
+			}
+		}
+	}
 	return nil
+}
+
+// jsonNames lists the exact json names a decode target declares.
+func jsonNames(into any) map[string]bool {
+	out := map[string]bool{}
+	t := reflect.TypeOf(into)
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return out
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		name := f.Name
+		if tag, ok := f.Tag.Lookup("json"); ok {
+			if n, _, _ := strings.Cut(tag, ","); n != "" {
+				name = n
+			}
+		}
+		out[name] = true
+	}
+	return out
 }
 
 // toolsList returns the advertised tool set with JSON Schema for each input.
