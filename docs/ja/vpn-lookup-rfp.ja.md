@@ -85,7 +85,8 @@ vpn-lookup mcp      # ローカル MCP サーバー（stdio）
 
 1. ipapi.is が管理されたサービス（`egress_service`）を名指ししたら、その種類で判定する:
    `private_relay` → `relay`、`secure_web_gateway` → `gateway`、`email_gateway` →
-   `mail_gateway`、`dns_resolver` → `dns_resolver`、`satellite` → `satellite`。未知の種類は
+   `mail_gateway`、`dns_resolver` → `dns_resolver`、`satellite` → `satellite`。`egress_service` が無くても
+   `is_satellite` が真なら `satellite`（文書上、egress は事業者名を足すだけ。Phase 1 で決定）。未知の種類は
    `egress_service` をそのまま根拠に出し、規則 2 へ進む
 2. 名指しがなければ、どちらかのソースが挙げた最も強い分類: `tor` > `vpn` > `proxy` > `hosting`
 3. どちらも何も挙げず、有効なソースがすべて答えたら `none`。どれかが失敗していたら `unknown`

@@ -90,7 +90,9 @@ With no key at all the MCP server still starts; `cache_status` and `get_usage` a
 
 1. When ipapi.is names a managed service (`egress_service`), its type decides the verdict:
    `private_relay` → `relay`, `secure_web_gateway` → `gateway`, `email_gateway` →
-   `mail_gateway`, `dns_resolver` → `dns_resolver`, `satellite` → `satellite`. An unknown
+   `mail_gateway`, `dns_resolver` → `dns_resolver`, `satellite` → `satellite`. An `is_satellite`
+   flag without an `egress_service` also counts as `satellite` (per the docs the egress object only
+   adds the provider's name; decided in phase 1). An unknown
    type is shown as evidence and the rule moves on to step 2
 2. Otherwise the strongest class either source reports: `tor` > `vpn` > `proxy` > `hosting`
 3. Nothing reported and every enabled source answered: `none`. A source failed: `unknown`
