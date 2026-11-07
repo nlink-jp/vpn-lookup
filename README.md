@@ -3,8 +3,8 @@
 Is this IP address an intermediary — a VPN, a proxy, Tor, a relay, a gateway, a hosting
 provider — and whose?
 
-> **Status: in development.** The CLI looks addresses up (RFP Phase 1); the MCP server's
-> lookup tool, `check_ip`, is next (Phase 2). Not released yet. The design is in
+> **Status: in development.** The CLI and the MCP server both look addresses up (RFP
+> Phases 1–2); the live end-to-end suite and the release are next. Not released yet. The design is in
 > [docs/en/vpn-lookup-rfp.md](docs/en/vpn-lookup-rfp.md).
 
 `vpn-lookup` is a CLI and local MCP server that layers two IP-intelligence services whose
@@ -99,8 +99,26 @@ an empty value or a missing `--config` file is an error. Environment variables
 
 ## MCP server
 
-`vpn-lookup mcp` speaks MCP over stdio and starts even with no key configured. In the
-current build it answers `get_usage` and `cache_status`; `check_ip` is RFP Phase 2.
+`vpn-lookup mcp` speaks MCP over stdio. Register it with a client such as Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "vpn-lookup": { "command": "vpn-lookup", "args": ["mcp"] }
+  }
+}
+```
+
+| tool | role |
+|------|------|
+| `check_ip` | verdict, `seen_by` and per-source evidence for 1–100 public addresses |
+| `cache_status` | which sources have a key, cache entries, and proxycheck.io's daily usage |
+| `get_usage` | the server's operating manual — call it once before first use |
+
+The server starts even with no key (`check_ip` then answers `no_api_key`). Arguments are
+checked strictly: an undeclared argument is refused by name. A result that would cross
+128 KB loses addresses from its tail, listed in `omitted` (a realistic 100-address answer
+is about 90 KB).
 
 ## Build
 

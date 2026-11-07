@@ -12,6 +12,8 @@ import (
 // it, and the message must name the offending field.
 func TestUnknownArgumentIsRefusedByName(t *testing.T) {
 	for _, tc := range []struct{ tool, args, field string }{
+		{ToolCheckIP, `{"ips":["8.8.8.8"],"refesh":true}`, "refesh"},
+		{ToolCheckIP, `{"ip":"8.8.8.8"}`, "ip"},
 		{ToolCacheStatus, `{"verbose":true}`, "verbose"},
 		{ToolGetUsage, `{"topic":"verdicts"}`, "topic"},
 	} {

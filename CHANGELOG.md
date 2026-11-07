@@ -20,5 +20,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is not read), the verdict synthesis, a per-source cache (ipapi.is 24 hours,
   proxycheck.io 1 hour clean / at most 15 minutes anonymous), text and
   `--json` output, and `--clear-cache`.
+- The MCP tool `check_ip` (RFP Phase 2): validation identical to the CLI's,
+  `no_api_key` when neither service has a key, compact JSON with provenance,
+  and a 128 KB ceiling that drops results from the tail into `omitted`.
+  `cache_status` now reports cache entries and proxycheck.io's daily usage
+  (from its dashboard API). The manual documents every verdict value, and a
+  meta-test pins that.
+- Third-party names are capped at 200 characters and an operator's service
+  list at 10, so results fit an MCP client's budget.
 - Shared safeguards: third-party text loses control and format characters,
   the key-carrying HTTP clients refuse redirects, and no error quotes a URL.

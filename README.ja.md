@@ -3,8 +3,8 @@
 この IP アドレスは中継点（VPN・プロキシ・Tor・中継サービス・ゲートウェイ・ホスティング）か、
 そうなら誰のものか。
 
-> **状態：開発中。** CLI での照会は実装済みです（RFP Phase 1）。MCP サーバーの照会ツール
-> `check_ip` は次の段階（Phase 2）です。まだリリースしていません。設計は
+> **状態：開発中。** CLI と MCP サーバーの照会は実装済みです（RFP Phase 1〜2）。次は実サービス
+> 相手の e2e とリリースです。まだリリースしていません。設計は
 > [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) にあります。
 
 `vpn-lookup` は、無償枠のまま組織自身の業務に使える 2 つの IP 情報サービス —
@@ -97,8 +97,25 @@ a.b.c.d
 
 ## MCP サーバー
 
-`vpn-lookup mcp` は stdio で MCP を話し、キーが無くても起動します。雛形の段階で答えるのは
-`get_usage` と `cache_status` で、`check_ip` は RFP Phase 2 で加わります。
+`vpn-lookup mcp` は stdio で MCP を話します。Claude Code などのクライアントへの登録例：
+
+```json
+{
+  "mcpServers": {
+    "vpn-lookup": { "command": "vpn-lookup", "args": ["mcp"] }
+  }
+}
+```
+
+| tool | 役割 |
+|------|------|
+| `check_ip` | 1〜100 件の公開 IP の判定・`seen_by`・ソースごとの根拠 |
+| `cache_status` | キーのあるソース、キャッシュの件数、proxycheck.io の当日の使用量 |
+| `get_usage` | サーバーの操作マニュアル — 初回利用前に一度呼ぶこと |
+
+キーが無くても起動します（`check_ip` は `no_api_key` を返します）。引数は厳格に検査し、
+宣言していない引数は名前を挙げて拒否します。結果が 128 KB を超えそうなときは末尾の IP を
+落とし、`omitted` に並べます（現実的な 100 件の回答は約 90 KB）。
 
 ## ビルド
 

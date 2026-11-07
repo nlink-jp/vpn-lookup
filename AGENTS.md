@@ -11,7 +11,7 @@ into one verdict with per-source evidence and `seen_by` corroboration.
 Module path: `github.com/nlink-jp/vpn-lookup`. Design authority:
 [docs/ja/vpn-lookup-rfp.ja.md](docs/ja/vpn-lookup-rfp.ja.md) (English beside it).
 
-**Status: RFP Phase 1 done (CLI lookups); MCP `check_ip` is Phase 2.** Not released.
+**Status: RFP Phases 1–2 done (CLI and MCP lookups); Phase 3 (live e2e, release) next.** Not released.
 
 ## Build / test
 
@@ -40,7 +40,8 @@ internal/verdict/    Pure synthesis: egress first, tor > vpn > proxy > hosting, 
 internal/cache/      Per-source JSON-file cache (ported from shodan-lookup), dir 0700
 internal/engine/     Per-source cache lookups, one request per source, fresh verdicts
 internal/app/        CLI shell: flags (anywhere), validation, text/JSON, --clear-cache
-internal/mcp/        Zero-dep stdio JSON-RPC 2.0 server; usage.md pinned by meta-tests
+internal/mcp/        Zero-dep stdio JSON-RPC 2.0 server: check_ip / cache_status / get_usage;
+                     the 128 KB response ceiling (tail omission); usage.md pinned by meta-tests
 e2e/                 Live suite (build tag "e2e"), Phase 3
 docs/{en,ja}/        RFP
 ```
@@ -72,8 +73,15 @@ docs/{en,ja}/        RFP
 
 ## Gotchas
 
-- **The MCP server starts with no key** (get_usage and cache_status answer); the CLI's
-  lookup path refuses with a usage error naming the variables to set.
+- **The MCP server starts with no key** (get_usage and cache_status answer; check_ip
+  returns `no_api_key`); the CLI's lookup path refuses with a usage error naming the
+  variables to set.
+- **The response budget lives in the MCP layer.** Names are capped at 200 characters and
+  operator services at 10 in the clients; check_ip's compact JSON drops results from the
+  tail into `omitted` only past 128 KB. A realistic result is ~880 bytes (100 → ~90 KB);
+  every name at its cap would be ~430 KB, which is what the backstop is for.
+- **cache_status makes one network call** when proxycheck.io has a key: its dashboard usage
+  API (key in the URL, counts an hour late). ipapi.is exposes no quota.
 - **`--version` is handled before config is read**, so a broken config never hides which
   build is installed (brew test runs it).
 - **proxycheck.io accepts an invalid key silently** (answers 200 as if unregistered), so a

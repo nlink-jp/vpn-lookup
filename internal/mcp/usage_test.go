@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/nlink-jp/vpn-lookup/internal/verdict"
 )
 
 // The manual is what an agent reads before its first call; these tests pin it
@@ -127,6 +129,31 @@ func TestEveryToolSchemaIsValidAndClosed(t *testing.T) {
 		}
 		if tl.InputSchema.AdditionalProperties == nil || *tl.InputSchema.AdditionalProperties {
 			t.Errorf("%s: schema should set additionalProperties:false", tl.Name)
+		}
+	}
+}
+
+// The manual must document every verdict value, or an agent cannot read the
+// main tool's answer.
+func TestUsageDocumentsEveryVerdict(t *testing.T) {
+	for _, v := range verdict.All {
+		if !strings.Contains(usageMarkdown, "`"+string(v)+"`") {
+			t.Errorf("usage.md never documents the verdict %q", v)
+		}
+	}
+	for _, s := range []string{verdict.SeenByBoth, verdict.SeenByIPAPI, verdict.SeenByProxycheck,
+		verdict.ProxyOpen, verdict.ProxyResidential, verdict.ProxyUnspecified} {
+		if !strings.Contains(usageMarkdown, "`"+s+"`") {
+			t.Errorf("usage.md never documents %q", s)
+		}
+	}
+}
+
+// The instructions are the only text some clients surface.
+func TestInstructionsCoverTheEssentials(t *testing.T) {
+	for _, want := range []string{"get_usage", "check_ip", "none", "unknown", "third-party"} {
+		if !strings.Contains(Instructions, want) {
+			t.Errorf("Instructions should mention %q", want)
 		}
 	}
 }

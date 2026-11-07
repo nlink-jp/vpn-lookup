@@ -1,11 +1,17 @@
-// Package mcp is the zero-dependency stdio JSON-RPC 2.0 MCP server. In the
-// scaffold it answers get_usage and cache_status; check_ip joins with the
-// lookup engine.
+// Package mcp is the zero-dependency stdio JSON-RPC 2.0 MCP server answering
+// check_ip, cache_status and get_usage over the same engine the CLI uses.
+//
+// This package is where the response budget lives: check_ip's result is
+// encoded compactly and, if it would cross 128 KB, loses results from its tail,
+// named in omitted (a realistic 100-address answer is about 90 KB). The CLI's
+// --json is never cut.
 //
 // get_usage is canonical: the embedded usage.md is what an agent reads before
-// its first call, and meta-tests pin it to the code. Tool errors are structured
-// JSON ({code, message}), returned as results rather than protocol errors so
-// that the model sees them. Arguments are decoded strictly (decodeArgs): an
-// undeclared argument is refused by name, for every tool including those that
-// take none. A closing stdin is the shutdown signal.
+// its first call, and meta-tests pin it to the tools, arguments, error codes
+// and verdict values. Tool errors are structured JSON ({code, message}),
+// returned as results rather than protocol errors so that the model sees them.
+// Arguments are decoded strictly (decodeArgs): an undeclared argument is
+// refused by name, for every tool including those that take none. Addresses
+// are validated exactly as the CLI validates them (ipaddr.ParseBatch) before
+// anything is sent. A closing stdin is the shutdown signal.
 package mcp

@@ -220,7 +220,12 @@ func runMCP(args []string, version string, stdin io.Reader, stdout, stderr io.Wr
 		return exitUsage
 	}
 	warn(stderr, cfg)
-	if err := mcp.Serve(cfg, version, stdin, stdout); err != nil {
+	opts := mcp.Options{Config: cfg, Engine: NewEngine(cfg, version), Version: version}
+	if cfg.HasProxycheck() {
+		pc := &proxycheck.Client{HTTP: keyClient(cfg), BaseURL: cfg.ProxycheckBaseURL, APIKey: cfg.ProxycheckKey, UserAgent: "vpn-lookup/" + version}
+		opts.Quota = pc.Usage
+	}
+	if err := mcp.Serve(opts, stdin, stdout); err != nil {
 		fmt.Fprintf(stderr, "error: mcp: %v\n", err)
 		return exitError
 	}

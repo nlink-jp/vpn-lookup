@@ -3,27 +3,55 @@ package mcp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nlink-jp/vpn-lookup/internal/config"
+	"github.com/nlink-jp/vpn-lookup/internal/engine"
+	"github.com/nlink-jp/vpn-lookup/internal/ipapi"
+	"github.com/nlink-jp/vpn-lookup/internal/proxycheck"
+	"github.com/nlink-jp/vpn-lookup/internal/verdict"
 )
 
 func testConfig(ipapiKey, proxycheckKey string) *config.Config {
 	return &config.Config{
 		IPAPIKey: ipapiKey, ProxycheckKey: proxycheckKey,
-		IPAPITTL: 24 * time.Hour, CacheDir: "/tmp/vpn-lookup-test-cache", Timeout: time.Second,
+		IPAPITTL: 24 * time.Hour, CacheDir: "/nonexistent/vpn-lookup-test-cache", Timeout: time.Second,
 	}
+}
+
+// fakeEngine records calls and answers every address as a VPN.
+type fakeEngine struct {
+	calls   [][]string
+	refresh []bool
+	name    string
+}
+
+func (f *fakeEngine) Lookup(ips []string, noCache bool) *engine.Report {
+	f.calls = append(f.calls, ips)
+	f.refresh = append(f.refresh, noCache)
+	rep := &engine.Report{}
+	for _, ip := range ips {
+		rep.Results = append(rep.Results, engine.Result{IP: ip, Verdict: verdict.VPN, SeenBy: verdict.SeenByBoth,
+			Providers: engine.Providers{IPAPI: "Example" + f.name}})
+	}
+	return rep
 }
 
 // serve feeds newline-delimited JSON-RPC requests through the server and
 // returns the decoded responses.
 func serve(t *testing.T, cfg *config.Config, lines ...string) []map[string]any {
 	t.Helper()
+	return serveWith(t, Options{Config: cfg, Engine: &fakeEngine{}, Version: "test"}, lines...)
+}
+
+func serveWith(t *testing.T, o Options, lines ...string) []map[string]any {
+	t.Helper()
 	var out bytes.Buffer
-	if err := Serve(cfg, "test", strings.NewReader(strings.Join(lines, "\n")), &out); err != nil {
+	if err := Serve(o, strings.NewReader(strings.Join(lines, "\n")), &out); err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
 	var resps []map[string]any
@@ -75,8 +103,8 @@ func TestToolsListAdvertisesOnlyWhatAnswers(t *testing.T) {
 	for _, x := range tools {
 		names = append(names, x.(map[string]any)["name"].(string))
 	}
-	if strings.Join(names, ",") != "get_usage,cache_status" {
-		t.Fatalf("tools = %v; the scaffold must not advertise check_ip before it answers", names)
+	if strings.Join(names, ",") != "check_ip,get_usage,cache_status" {
+		t.Fatalf("tools = %v", names)
 	}
 }
 
@@ -108,7 +136,7 @@ func TestGetUsageReturnsTheManual(t *testing.T) {
 }
 
 func TestUnknownToolIsAStructuredError(t *testing.T) {
-	resps := serve(t, testConfig("", ""), callTool("check_ip", `{"ips":["192.0.2.1"]}`))
+	resps := serve(t, testConfig("", ""), callTool("check_hash", `{"hashes":["x"]}`))
 	text, isErr := toolText(t, resps[0])
 	if !isErr || !strings.Contains(text, CodeUnknownTool) {
 		t.Fatalf("unknown tool: isErr=%v %s", isErr, text)
@@ -135,5 +163,129 @@ func TestMalformedJSONReportsParseErrorAndStops(t *testing.T) {
 	resps := serve(t, testConfig("", ""), `{not json`)
 	if len(resps) != 1 || resps[0]["error"] == nil {
 		t.Fatalf("want a single parse-error response, got %v", resps)
+	}
+}
+
+func TestCheckIPAnswersThroughTheEngine(t *testing.T) {
+	eng := &fakeEngine{}
+	resps := serveWith(t, Options{Config: testConfig("ik", ""), Engine: eng},
+		callTool(ToolCheckIP, `{"ips":["8.8.8.8","::ffff:1.1.1.1"],"refresh":true}`))
+	text, isErr := toolText(t, resps[0])
+	if isErr {
+		t.Fatalf("unexpected error: %s", text)
+	}
+	if len(eng.calls) != 1 || strings.Join(eng.calls[0], ",") != "8.8.8.8,1.1.1.1" || !eng.refresh[0] {
+		t.Fatalf("engine calls = %v refresh = %v; canonical addresses and refresh must reach it", eng.calls, eng.refresh)
+	}
+	var got struct {
+		Results    []engine.Result `json:"results"`
+		Provenance string          `json:"provenance"`
+	}
+	if err := json.Unmarshal([]byte(text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Results) != 2 || got.Results[0].Verdict != verdict.VPN || !strings.Contains(got.Provenance, "third-party text") {
+		t.Fatalf("payload = %s", text)
+	}
+}
+
+func TestCheckIPRefusesBeforeAnythingIsSent(t *testing.T) {
+	for args, want := range map[string]string{
+		`{"ips":[]}`:                     "provide 'ips'",
+		`{}`:                             "provide 'ips'",
+		`{"ips":["8.8.8.8","10.0.0.1"]}`: "private",
+		`{"ips":["example.com"]}`:        "not an IP address",
+		`{"ips":"8.8.8.8"}`:              "cannot unmarshal",
+	} {
+		eng := &fakeEngine{}
+		text, isErr := toolText(t, serveWith(t, Options{Config: testConfig("ik", ""), Engine: eng}, callTool(ToolCheckIP, args))[0])
+		if !isErr || !strings.Contains(text, CodeInvalidInput) || !strings.Contains(text, want) || len(eng.calls) != 0 {
+			t.Errorf("%s: isErr=%v text=%s calls=%v", args, isErr, text, eng.calls)
+		}
+	}
+}
+
+func TestCheckIPWithoutKeysIsNoAPIKey(t *testing.T) {
+	eng := &fakeEngine{}
+	text, isErr := toolText(t, serveWith(t, Options{Config: testConfig("", ""), Engine: eng}, callTool(ToolCheckIP, `{"ips":["8.8.8.8"]}`))[0])
+	if !isErr || !strings.Contains(text, CodeNoAPIKey) || len(eng.calls) != 0 {
+		t.Fatalf("isErr=%v text=%s calls=%v", isErr, text, eng.calls)
+	}
+}
+
+func TestCheckIPOverTheCeilingIsRefused(t *testing.T) {
+	var ips []string
+	for i := 1; i <= MaxPerCall+1; i++ {
+		ips = append(ips, fmt.Sprintf("%q", fmt.Sprintf("8.8.%d.%d", i/250, i%250+1)))
+	}
+	text, isErr := toolText(t, serve(t, testConfig("ik", ""), callTool(ToolCheckIP, `{"ips":[`+strings.Join(ips, ",")+`]}`))[0])
+	if !isErr || !strings.Contains(text, "ceiling") {
+		t.Fatalf("isErr=%v %s", isErr, text)
+	}
+}
+
+// A result over the 128 KB ceiling loses results from its tail, named in
+// omitted, instead of being cut mid-way or sent whole.
+func TestCheckIPResultIsCappedAndSaysWhatWasLeftOut(t *testing.T) {
+	eng := &fakeEngine{name: strings.Repeat("x", 3000)}
+	var ips []string
+	for i := 1; i <= MaxPerCall; i++ {
+		ips = append(ips, fmt.Sprintf("%q", fmt.Sprintf("8.8.%d.%d", i/250, i%250+1)))
+	}
+	text, isErr := toolText(t, serveWith(t, Options{Config: testConfig("ik", ""), Engine: eng}, callTool(ToolCheckIP, `{"ips":[`+strings.Join(ips, ",")+`]}`))[0])
+	if isErr {
+		t.Fatalf("unexpected error: %.200s", text)
+	}
+	if len(text) > maxResultBytes {
+		t.Fatalf("result is %d bytes, over the %d ceiling", len(text), maxResultBytes)
+	}
+	var got struct {
+		Results []engine.Result `json:"results"`
+		Omitted []string        `json:"omitted"`
+	}
+	if err := json.Unmarshal([]byte(text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Results)+len(got.Omitted) != MaxPerCall || len(got.Omitted) == 0 {
+		t.Fatalf("results %d + omitted %d; every address must be either answered or named", len(got.Results), len(got.Omitted))
+	}
+	if got.Omitted[len(got.Omitted)-1] != "8.8.0.101" {
+		t.Fatalf("omitted = %v; the tail goes first, in order", got.Omitted)
+	}
+}
+
+// A realistic answer (shaped like the live Mullvad result, 2026-11-07) is
+// about 880 bytes, so 100 of them fit the ceiling with nothing omitted;
+// omission is the backstop for pathological upstream text, not the norm.
+func TestRealisticResultsFitWithoutOmission(t *testing.T) {
+	f, r50, c100 := false, 50, 100
+	res := engine.Result{IP: "2001:4860:4860:1234:5678:9abc:def0:1234", Verdict: verdict.VPN, SeenBy: verdict.SeenByBoth, Mobile: &f,
+		Providers: engine.Providers{IPAPI: "ExampleVPN", Proxycheck: "Example"}}
+	res.IPAPI = engine.SourceView[ipapi.Result]{Enabled: true, Result: &ipapi.Result{IsVPN: true, IsDatacenter: true,
+		VPN: &ipapi.VPN{Service: "ExampleVPN", Type: "vpn_server", LastSeen: "2026-11-06T12:43:23.958Z"}, Datacenter: "Example Hosting SHPK",
+		CompanyType: "business", CompanyName: "Example Hosting SHPK", AbuserScore: "0.0010 (Low)"}}
+	res.Proxycheck = engine.SourceView[proxycheck.Result]{Enabled: true, Result: &proxycheck.Result{VPN: true, Hosting: true, Anonymous: true,
+		Risk: &r50, Confidence: &c100, Operator: "Example", Services: []string{"datacenter_vpns"}, NetworkType: "Hosting",
+		Provider: "Example Hosting SHPK", DelistDateTime: "2026-11-07T03:35:58Z"}}
+	r := &checkIPResult{Report: &engine.Report{}, Provenance: provenance}
+	for i := 0; i < MaxPerCall; i++ {
+		r.Results = append(r.Results, res)
+	}
+	out := capResult(r)
+	if len(r.Omitted) != 0 || len(out.Content[0].Text) > maxResultBytes {
+		t.Fatalf("realistic results were cut: omitted %d, %d bytes", len(r.Omitted), len(out.Content[0].Text))
+	}
+}
+
+func TestCacheStatusReportsQuotaAndItsFailure(t *testing.T) {
+	ok := func() (*proxycheck.Usage, error) { return &proxycheck.Usage{QueriesToday: 12, DailyLimit: 1000}, nil }
+	text, _ := toolText(t, serveWith(t, Options{Config: testConfig("", "pk"), Engine: &fakeEngine{}, Quota: ok}, callTool(ToolCacheStatus, `{}`))[0])
+	if !strings.Contains(text, `"queries_today": 12`) || !strings.Contains(text, `"daily_limit": 1000`) || !strings.Contains(text, "not exposed") {
+		t.Fatalf("cache_status = %s", text)
+	}
+	bad := func() (*proxycheck.Usage, error) { return nil, errors.New("proxycheck.io: usage: HTTP 500") }
+	text, isErr := toolText(t, serveWith(t, Options{Config: testConfig("", "pk"), Engine: &fakeEngine{}, Quota: bad}, callTool(ToolCacheStatus, `{}`))[0])
+	if isErr || !strings.Contains(text, "HTTP 500") {
+		t.Fatalf("a quota failure is reported inside the status, not as a tool error: isErr=%v %s", isErr, text)
 	}
 }

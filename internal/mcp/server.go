@@ -5,6 +5,8 @@ import (
 	"io"
 
 	"github.com/nlink-jp/vpn-lookup/internal/config"
+	"github.com/nlink-jp/vpn-lookup/internal/engine"
+	"github.com/nlink-jp/vpn-lookup/internal/proxycheck"
 )
 
 // defaultProtocolVersion is advertised when the client sends none.
@@ -47,18 +49,33 @@ func textResult(isErr bool, text string) toolResult {
 	return toolResult{Content: []contentItem{{Type: "text", Text: text}}, IsError: isErr}
 }
 
-// server holds what every tool call goes through, so MCP and CLI behaviour
-// cannot diverge.
+// Looker is the part of the engine check_ip calls, so tests can stand in.
+type Looker interface {
+	Lookup(ips []string, noCache bool) *engine.Report
+}
+
+// Options are the server's dependencies. Engine is the same engine the CLI
+// uses, so MCP and CLI behaviour cannot diverge. Quota reads proxycheck.io's
+// daily usage; nil when that source has no key.
+type Options struct {
+	Config  *config.Config
+	Engine  Looker
+	Quota   func() (*proxycheck.Usage, error)
+	Version string
+}
+
 type server struct {
 	cfg     *config.Config
+	eng     Looker
+	quota   func() (*proxycheck.Usage, error)
 	version string
 }
 
 // Serve runs the MCP protocol loop until in reaches EOF, which is the shutdown
 // signal. It is safe to point in at os.Stdin and out at os.Stdout; diagnostics
 // must go to stderr only.
-func Serve(cfg *config.Config, version string, in io.Reader, out io.Writer) error {
-	s := &server{cfg: cfg, version: version}
+func Serve(o Options, in io.Reader, out io.Writer) error {
+	s := &server{cfg: o.Config, eng: o.Engine, quota: o.Quota, version: o.Version}
 	dec := json.NewDecoder(in)
 	enc := json.NewEncoder(out)
 	for {
