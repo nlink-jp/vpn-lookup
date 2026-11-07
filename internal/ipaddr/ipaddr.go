@@ -247,3 +247,25 @@ func last4Inverted(a netip.Addr) netip.Addr {
 }
 
 func mustPrefix(s string) netip.Prefix { return netip.MustParsePrefix(s) }
+
+// ParseBatch turns raw inputs into the canonical addresses to send (Target),
+// refusing the whole batch on the first input that cannot be sent — so a typo
+// never half-runs a triage — and refusing more than max distinct addresses.
+// Duplicates are kept in input order; the caller asks once per address.
+func ParseBatch(raw []string, max int) ([]string, error) {
+	out := make([]string, 0, len(raw))
+	distinct := map[string]bool{}
+	for _, r := range raw {
+		addr, err := Parse(r)
+		if err != nil {
+			return nil, err
+		}
+		s := addr.String()
+		distinct[s] = true
+		out = append(out, s)
+	}
+	if len(distinct) > max {
+		return nil, &Error{Reason: fmt.Sprintf("%d distinct addresses; the ceiling is %d per call (both free tiers allow 1,000 lookups a day)", len(distinct), max)}
+	}
+	return out, nil
+}

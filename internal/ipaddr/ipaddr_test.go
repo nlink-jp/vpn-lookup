@@ -156,3 +156,19 @@ func TestTargetKeepsTunnelledIPv6(t *testing.T) {
 		t.Fatalf("Teredo address was replaced by %s; the IPv6 host must be sent", got)
 	}
 }
+
+func TestParseBatch(t *testing.T) {
+	got, err := ParseBatch([]string{"8.8.8.8", "::ffff:8.8.8.8", "2001:4860:4860:0:0:0:0:8888"}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "8.8.8.8,8.8.8.8,2001:4860:4860::8888" {
+		t.Fatalf("got %v; canonical, duplicates kept, counted once", got)
+	}
+	if _, err := ParseBatch([]string{"8.8.8.8", "10.0.0.1"}, 10); err == nil || !strings.Contains(err.Error(), "10.0.0.1") {
+		t.Fatalf("one bad input must refuse the batch, naming it: %v", err)
+	}
+	if _, err := ParseBatch([]string{"8.8.8.8", "1.1.1.1", "9.9.9.9"}, 2); err == nil || !strings.Contains(err.Error(), "ceiling") {
+		t.Fatalf("over the ceiling must be refused: %v", err)
+	}
+}

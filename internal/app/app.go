@@ -152,28 +152,7 @@ func gatherIPs(args []string, stdin io.Reader) ([]string, error) {
 			return nil, fmt.Errorf("read stdin: %w", err)
 		}
 	}
-	return Validate(raw)
-}
-
-// Validate turns raw inputs into the canonical addresses to send, refusing the
-// whole batch on the first input that cannot be sent, and refusing more than
-// MaxPerCall distinct addresses.
-func Validate(raw []string) ([]string, error) {
-	out := make([]string, 0, len(raw))
-	distinct := map[string]bool{}
-	for _, r := range raw {
-		addr, err := ipaddr.Parse(r)
-		if err != nil {
-			return nil, err
-		}
-		s := addr.String()
-		distinct[s] = true
-		out = append(out, s)
-	}
-	if len(distinct) > MaxPerCall {
-		return nil, fmt.Errorf("%d distinct addresses; the ceiling is %d per call (both free tiers allow 1,000 lookups a day)", len(distinct), MaxPerCall)
-	}
-	return out, nil
+	return ipaddr.ParseBatch(raw, MaxPerCall)
 }
 
 // NewEngine builds the engine for a configuration: one HTTP client per source,
