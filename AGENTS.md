@@ -20,6 +20,7 @@ make build   # → dist/vpn-lookup (NEVER `go build` directly)
 make test    # go test -race -cover ./... then go vet -tags e2e ./...  (offline)
 make lint    # golangci-lint
 make check   # lint + test + build-all
+make vuln    # govulncheck over the build; `make package` runs it first and stops on a finding
 make e2e     # live tests; keys from the environment, each test skips without its key
 ```
 
