@@ -14,7 +14,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nlink-jp/vpn-lookup/internal/cache"
@@ -224,6 +226,9 @@ func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
+// notifyContext is signal.NotifyContext; a test stands in for the signal.
+var notifyContext = signal.NotifyContext
+
 // runMCP starts the stdio MCP server. Diagnostics go to stderr only: stdout
 // belongs to the JSON-RPC stream. It starts without any key, so that get_usage
 // and cache_status answer before the operator has configured anything.
@@ -252,7 +257,11 @@ func runMCP(args []string, version string, stdin io.Reader, stdout, stderr io.Wr
 		pc := &proxycheck.Client{HTTP: keyClient(cfg), BaseURL: cfg.ProxycheckBaseURL, APIKey: cfg.ProxycheckKey, UserAgent: "vpn-lookup/" + version}
 		opts.Quota = pc.Usage
 	}
-	if err := mcp.Serve(context.Background(), opts, stdin, stdout); err != nil {
+	// SIGINT and SIGTERM cancel the server's ctx: it returns at once and its
+	// cleanup runs (server-migration §2).
+	ctx, stop := notifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := mcp.Serve(ctx, opts, stdin, stdout); err != nil {
 		fmt.Fprintf(stderr, "error: mcp: %v\n", err)
 		return exitError
 	}
