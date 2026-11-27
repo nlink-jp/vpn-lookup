@@ -5,6 +5,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -251,7 +252,7 @@ func runMCP(args []string, version string, stdin io.Reader, stdout, stderr io.Wr
 		pc := &proxycheck.Client{HTTP: keyClient(cfg), BaseURL: cfg.ProxycheckBaseURL, APIKey: cfg.ProxycheckKey, UserAgent: "vpn-lookup/" + version}
 		opts.Quota = pc.Usage
 	}
-	if err := mcp.Serve(opts, stdin, stdout); err != nil {
+	if err := mcp.Serve(context.Background(), opts, stdin, stdout); err != nil {
 		fmt.Fprintf(stderr, "error: mcp: %v\n", err)
 		return exitError
 	}

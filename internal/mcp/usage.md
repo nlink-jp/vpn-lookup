@@ -90,7 +90,6 @@ Tool errors are structured JSON: `{"code": ..., "message": ...}` with `isError: 
 |------|---------|----------|
 | `invalid_input` | an address that cannot be sent (non-public, malformed, a hostname — resolve it with doh-lookup first), `ips` empty or over 100 distinct, an undeclared argument, or one of the wrong JSON type | fix the input and call again; the message names the offending address or field |
 | `no_api_key` | `check_ip` was called but neither service has a key | the operator sets `[ipapi] api_key` and/or `[proxycheck] api_key` (one key per organization each) and restarts the server |
-| `unknown_tool` | a tool name this server does not have | call `tools/list` |
 | `internal_error` | the result could not be encoded | report it; it is a bug |
 
 A failure of one service for some addresses is not a tool error: those results carry the source's `error`, `degraded: true`, and — when nothing was reported — the verdict `unknown`.

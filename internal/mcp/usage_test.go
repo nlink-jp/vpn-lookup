@@ -26,7 +26,7 @@ func listed(t *testing.T) []struct {
 	} `json:"inputSchema"`
 } {
 	t.Helper()
-	b, err := json.Marshal(toolsList())
+	b, err := json.Marshal(map[string]any{"tools": toolsList()})
 	if err != nil {
 		t.Fatal(err)
 	}

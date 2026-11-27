@@ -272,9 +272,8 @@ func TestMCPRejectsPositionalArgs(t *testing.T) {
 
 func TestMCPStartsWithoutKeys(t *testing.T) {
 	isolate(t)
-	code, out, errOut := runIt(t, `{"jsonrpc":"2.0","id":1,"method":"initialize"}`+"\n", "mcp")
-	if code != 0 || !strings.Contains(out, `"name":"vpn-lookup"`) {
-		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
+	if name := openMCP(t).Server().Name; name != "vpn-lookup" {
+		t.Fatalf("serverInfo.name = %q", name)
 	}
 }
 

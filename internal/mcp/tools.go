@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -26,7 +27,6 @@ const (
 const (
 	CodeInvalidInput = "invalid_input"
 	CodeNoAPIKey     = "no_api_key"
-	CodeUnknownTool  = "unknown_tool"
 	CodeInternal     = "internal_error"
 )
 
@@ -49,8 +49,9 @@ const provenance = "Answers from ipapi.is and proxycheck.io, synthesized by vpn-
 //go:embed usage.md
 var usageMarkdown string
 
-// Instructions is the initialize-time hint (surfaced via the MCP
-// `instructions` field) that makes get_usage discoverable.
+// Instructions is the hint a client receives when it opens the server (the
+// MCP `instructions` field, in initialize or server/discover) that makes
+// get_usage discoverable.
 const Instructions = "vpn-lookup tells whether an IP address is an intermediary — Tor, a commercial VPN, a managed " +
 	"relay (iCloud Private Relay), a corporate secure web gateway, an email gateway, a public DNS resolver, a " +
 	"satellite ISP, a proxy, or a hosting provider — and whose, by layering ipapi.is and proxycheck.io. check_ip " +
@@ -125,62 +126,57 @@ func jsonNames(into any) map[string]bool {
 }
 
 // toolsList returns the advertised tool set with JSON Schema for each input.
-func toolsList() any {
-	return map[string]any{
-		"tools": []map[string]any{
-			{
-				"name": ToolCheckIP,
-				"description": "Is each IP address an intermediary — Tor, VPN, relay, gateway, mail gateway, DNS resolver, " +
-					"satellite ISP, proxy, hosting — and whose? One verdict per address with seen_by and per-source " +
-					"evidence. Every address reaches ipapi.is and proxycheck.io; non-public addresses are refused before " +
-					"anything is sent.",
-				"inputSchema": obj(map[string]any{
-					"ips": map[string]any{
-						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "Public IPv4/IPv6 addresses, 1-100 distinct per call. One address that cannot be sent refuses the whole call.",
-					},
-					"refresh": map[string]any{"type": "boolean", "description": "Bypass the local cache and ask both services again."},
-				}, "ips"),
-			},
-			{
-				"name":        ToolGetUsage,
-				"description": "Return this server's operating manual (markdown): the tools, the verdict semantics, the result schema and the error-recovery table. Call it once before first use.",
-				"inputSchema": obj(map[string]any{}),
-			},
-			{
-				"name":        ToolCacheStatus,
-				"description": "Report which sources have a key, the cache entries and freshness windows, and proxycheck.io's daily usage (one request to its dashboard API). Answers even when no key is configured.",
-				"inputSchema": obj(map[string]any{}),
-			},
+func toolsList() []map[string]any {
+	return []map[string]any{
+		{
+			"name": ToolCheckIP,
+			"description": "Is each IP address an intermediary — Tor, VPN, relay, gateway, mail gateway, DNS resolver, " +
+				"satellite ISP, proxy, hosting — and whose? One verdict per address with seen_by and per-source " +
+				"evidence. Every address reaches ipapi.is and proxycheck.io; non-public addresses are refused before " +
+				"anything is sent.",
+			"inputSchema": obj(map[string]any{
+				"ips": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Public IPv4/IPv6 addresses, 1-100 distinct per call. One address that cannot be sent refuses the whole call.",
+				},
+				"refresh": map[string]any{"type": "boolean", "description": "Bypass the local cache and ask both services again."},
+			}, "ips"),
+		},
+		{
+			"name":        ToolGetUsage,
+			"description": "Return this server's operating manual (markdown): the tools, the verdict semantics, the result schema and the error-recovery table. Call it once before first use.",
+			"inputSchema": obj(map[string]any{}),
+		},
+		{
+			"name":        ToolCacheStatus,
+			"description": "Report which sources have a key, the cache entries and freshness windows, and proxycheck.io's daily usage (one request to its dashboard API). Answers even when no key is configured.",
+			"inputSchema": obj(map[string]any{}),
 		},
 	}
 }
 
-func (s *server) toolsCall(params json.RawMessage) (toolResult, *rpcError) {
-	var p struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
-	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return toolResult{}, &rpcError{Code: -32602, Message: "invalid params: " + err.Error()}
-	}
-	switch p.Name {
+// toolsCall dispatches one call by tool name and builds its result. The
+// engine takes no context: a cancelled call still runs to its end, and the
+// module drops the answer.
+func (s *server) toolsCall(_ context.Context, name string, args json.RawMessage) toolResult {
+	switch name {
 	case ToolCheckIP:
-		return s.toolCheckIP(p.Arguments), nil
+		return s.toolCheckIP(args)
 	case ToolGetUsage:
 		// No arguments — which still means "none", not "any".
-		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
-			return errorResult(CodeInvalidInput, err.Error()), nil
+		if err := decodeArgs(args, &struct{}{}); err != nil {
+			return errorResult(CodeInvalidInput, err.Error())
 		}
-		return textResult(false, usageMarkdown), nil
+		return textResult(false, usageMarkdown)
 	case ToolCacheStatus:
-		if err := decodeArgs(p.Arguments, &struct{}{}); err != nil {
-			return errorResult(CodeInvalidInput, err.Error()), nil
+		if err := decodeArgs(args, &struct{}{}); err != nil {
+			return errorResult(CodeInvalidInput, err.Error())
 		}
-		return s.toolCacheStatus(), nil
+		return s.toolCacheStatus()
 	default:
-		return errorResult(CodeUnknownTool, "unknown tool: "+p.Name+" (call tools/list)"), nil
+		// Not reached: the protocol layer refuses a tool it did not register.
+		return textResult(true, "unknown tool: "+name)
 	}
 }
 

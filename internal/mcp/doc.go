@@ -1,4 +1,5 @@
-// Package mcp is the zero-dependency stdio JSON-RPC 2.0 MCP server answering
+// Package mcp is vpn-lookup's stdio MCP server, speaking both eras of the
+// protocol through nlink-jp/mcp's server.ToolServer (ADR-0001), answering
 // check_ip, cache_status and get_usage over the same engine the CLI uses.
 //
 // This package is where the response budget lives: check_ip's result is
@@ -13,5 +14,6 @@
 // Arguments are decoded strictly (decodeArgs): an undeclared argument is
 // refused by name, for every tool including those that take none. Addresses
 // are validated exactly as the CLI validates them (ipaddr.ParseBatch) before
-// anything is sent. A closing stdin is the shutdown signal.
+// anything is sent. The server ends at end of input (answering every request
+// that arrived) or on SIGINT/SIGTERM.
 package mcp

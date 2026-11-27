@@ -139,9 +139,8 @@ func TestLiveBinary(t *testing.T) {
 	if _, errOut, code := run("", "10.0.0.1"); code != 2 || !strings.Contains(errOut, "private") {
 		t.Fatalf("a private address must be refused: code=%d err=%q", code, errOut)
 	}
-	mcpIn := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_ip","arguments":{"ips":["136.226.50.55"]}}}` + "\n"
-	out, errOut, code = run(mcpIn, "mcp")
-	if code != 0 || !strings.Contains(out, `\"verdict\":\"gateway\"`) || !strings.Contains(out, `\"from_cache\":true`) {
-		t.Fatalf("mcp check_ip: code=%d out=%.400s err=%q", code, out, errOut)
+	text, isErr := callBinary(t, bin, env, "check_ip", map[string]any{"ips": []string{"136.226.50.55"}})
+	if isErr || !strings.Contains(text, `"verdict":"gateway"`) || !strings.Contains(text, `"from_cache":true`) {
+		t.Fatalf("mcp check_ip: isError=%v text=%.400s", isErr, text)
 	}
 }
