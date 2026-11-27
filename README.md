@@ -112,6 +112,11 @@ quoting the text, since it may be a key.
 
 ## MCP server
 
+The server speaks both eras of the protocol: the 2026-07-28 revision (clients
+that probe with `server/discover`) and the earlier `initialize` handshake
+(2025-11-25, 2025-06-18, 2024-11-05). Requests piped in are all answered before
+it exits at end of input.
+
 `vpn-lookup mcp` speaks MCP over stdio. Register it with a client such as Claude Code:
 
 ```json

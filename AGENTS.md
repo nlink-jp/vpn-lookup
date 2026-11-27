@@ -24,8 +24,9 @@ make vuln    # govulncheck over the build; `make package` runs it first and stop
 make e2e     # live tests; keys from the environment, each test skips without its key
 ```
 
-Go 1.25+. One dependency, the organization's TOML decoder `github.com/nlink-jp/toml`
-(ADR-026). Everything else is the standard library.
+Go 1.25+. Two dependencies, both the organization's own: the TOML decoder
+`github.com/nlink-jp/toml` (ADR-026) and the MCP protocol layer `github.com/nlink-jp/mcp`
+(organization ADR-030; ADR-0001). Everything else is the standard library.
 
 ## Layout
 
@@ -41,7 +42,7 @@ internal/verdict/    Pure synthesis: egress first, tor > vpn > proxy > hosting, 
 internal/cache/      Per-source JSON-file cache (ported from shodan-lookup), dir 0700
 internal/engine/     Per-source cache lookups, one request per source, fresh verdicts
 internal/app/        CLI shell: flags (anywhere), validation, text/JSON, --clear-cache
-internal/mcp/        Zero-dep stdio JSON-RPC 2.0 server: check_ip / cache_status / get_usage;
+internal/mcp/        MCP tools on nlink-jp/mcp's server.ToolServer (both eras; ADR-0001): check_ip / cache_status / get_usage;
                      the 128 KB response ceiling (tail omission); usage.md pinned by meta-tests
 e2e/                 Live suite (build tag "e2e"): ipapi.is's documented example addresses per
                      managed-service type; skips without both keys; ~6 lookups per source
@@ -76,6 +77,15 @@ docs/{en,ja}/        RFP
 - **For the organization's own work only** (ipapi.is §2.3 forbids client IR engagements).
 
 ## Gotchas
+
+- **The MCP protocol is nlink-jp/mcp's** (ADR-0001, organization ADR-030 §6).
+  `internal/mcp` never handles `initialize` or `server/discover` itself: `Serve`
+  registers `toolsList()` on a `server.ToolServer` and each handler calls
+  `toolsCall`. Tests replay their requests through the module's `client`
+  (`clienttest_test.go`) and run its three probe clients; do not write the
+  handshake by hand in a test. Before initialize, `tools/*` is -32602 — the
+  module's rule, not a defect. Argument names are matched exactly
+  (`decodeArgs`, `jsonNames`).
 
 - **The MCP server starts with no key** (get_usage and cache_status answer; check_ip
   returns `no_api_key`); the CLI's lookup path refuses with a usage error naming the
