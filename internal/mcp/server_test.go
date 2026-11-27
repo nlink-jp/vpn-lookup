@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nlink-jp/mcp"
+	"github.com/nlink-jp/mcp/client"
 	"github.com/nlink-jp/vpn-lookup/internal/config"
 	"github.com/nlink-jp/vpn-lookup/internal/engine"
 	"github.com/nlink-jp/vpn-lookup/internal/ipapi"
@@ -272,15 +274,67 @@ func TestCeilingMeasuresTheEscapedText(t *testing.T) {
 	eng := &fakeEngine{name: strings.Repeat(`"<>&`, 400)}
 	var ips []string
 	for i := 1; i <= MaxPerCall; i++ {
-		ips = append(ips, fmt.Sprintf("%q", fmt.Sprintf("8.8.%d.%d", i/250, i%250+1)))
+		ips = append(ips, fmt.Sprintf("8.8.%d.%d", i/250, i%250+1))
 	}
-	req := callTool(ToolCheckIP, `{"ips":[`+strings.Join(ips, ",")+`]}`)
-	out := serveOverClient(t, func(ctx context.Context, in io.Reader, w io.Writer) error {
-		return Serve(ctx, Options{Config: testConfig("ik", ""), Engine: eng}, in, w)
-	}, req)
-	if out.Len() > maxResultBytes+1024 {
-		t.Fatalf("the response is %d bytes on the wire; the ceiling is %d", out.Len(), maxResultBytes)
+	// Each line the server writes is measured as it passes to the client. The
+	// client opens a dual-era server in the modern era, whose result carries
+	// resultType and _meta as well: the larger envelope of the two.
+	longest := wireLongest(t, Options{Config: testConfig("ik", ""), Engine: eng},
+		ToolCheckIP, map[string]any{"ips": ips})
+	if longest > maxResultBytes+1024 {
+		t.Errorf("the longest line on the wire is %d bytes; the ceiling is %d", longest, maxResultBytes)
 	}
+	// The answer is cut near the ceiling, so its line is long: a short one
+	// would mean the meter saw something else.
+	if longest < maxResultBytes/2 {
+		t.Errorf("the longest line is only %d bytes; the meter did not see the result", longest)
+	}
+}
+
+// wireLongest opens the server with nlink-jp/mcp's client, calls one tool,
+// and returns the length of the longest line the server wrote.
+func wireLongest(t *testing.T, o Options, tool string, args any) int {
+	t.Helper()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = Serve(ctx, o, inR, outW); _ = outW.Close(); close(done) }()
+	lines := &lineMeter{}
+	kill := func() { _ = inW.Close(); _ = outR.Close() }
+	conn, err := client.NewLineConn(io.TeeReader(outR, lines), inW, kill, client.LineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := client.Options{Client: mcp.Implementation{Name: "test", Version: "0"}}
+	octx, ocancel := context.WithTimeout(ctx, 10*time.Second)
+	defer ocancel()
+	cl, err := client.Open(octx, conn, opts)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := cl.CallTool(octx, tool, args, nil); err != nil {
+		t.Fatalf("%s: %v", tool, err)
+	}
+	_ = cl.Close()
+	<-done
+	return lines.longest
+}
+
+// lineMeter records the longest newline-terminated line written through it.
+type lineMeter struct{ cur, longest int }
+
+func (m *lineMeter) Write(p []byte) (int, error) {
+	for _, b := range p {
+		if b == '\n' {
+			m.longest = max(m.longest, m.cur)
+			m.cur = 0
+			continue
+		}
+		m.cur++
+	}
+	return len(p), nil
 }
 
 // ADR-030 §7: the server against the three probe clients (legacy only,
@@ -290,4 +344,16 @@ func TestAgainstTheProbeClients(t *testing.T) {
 	probeMatrix(t, func(ctx context.Context, in io.Reader, w io.Writer) error {
 		return Serve(ctx, o, in, w)
 	})
+}
+
+// The client that opens the server receives the instructions — the hint that
+// points it at get_usage — whichever era it opens in.
+func TestOpeningCarriesTheInstructions(t *testing.T) {
+	o := Options{Config: testConfig("", ""), Engine: &fakeEngine{}, Version: "test"}
+	cl := openWith(t, func(ctx context.Context, in io.Reader, w io.Writer) error {
+		return Serve(ctx, o, in, w)
+	}, client.Options{})
+	if got := cl.Instructions(); got != Instructions {
+		t.Errorf("instructions = %q, want the package's Instructions", got)
+	}
 }
